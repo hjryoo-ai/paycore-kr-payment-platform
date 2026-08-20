@@ -85,11 +85,17 @@ Artemis 콘솔 <http://localhost:8161> (`paycore/paycore`) · Kafka 호스트 �
 ## 개발
 
 ```bash
+docker compose down        # ← 테스트 전에 반드시. 아래 주의사항 참고
 ./gradlew build            # 컴파일 + 포맷 검사 + 테스트
 ./gradlew spotlessApply    # 포맷 자동 수정
 ./gradlew bootJar          # 실행 가능 jar
-./gradlew dependencyCheckAnalyze   # OWASP 취약점 스캔 (NVD_API_KEY 환경변수 권장)
+./gradlew dependencyCheckAggregate   # OWASP 취약점 스캔 (NVD_API_KEY 환경변수 권장)
 ```
+
+> **compose 스택과 테스트를 동시에 돌리지 말 것.** 통합 테스트는 Testcontainers 로 Oracle·Kafka·Artemis 를
+> 따로 띄운다. 로컬 스택이 떠 있으면 Docker 메모리가 모자라 테스트용 Oracle 이 `OOMKilled` 되고,
+> 증상은 `Could not initialize class ...SharedContainers` 라는 엉뚱한 오류로 나타난다.
+> 코드가 아니라 환경 문제이니 `docker compose down` 먼저 하고 다시 돌린다.
 
 작업 규칙은 [`CLAUDE.md`](CLAUDE.md) 참고. 핵심 불변식 5가지가 테스트로 강제된다.
 

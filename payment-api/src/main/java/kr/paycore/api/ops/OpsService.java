@@ -9,6 +9,7 @@ import kr.paycore.core.domain.PaymentStatus;
 import kr.paycore.core.event.PaymentClearedEvent;
 import kr.paycore.core.event.PaymentEventType;
 import kr.paycore.core.event.PaymentFailedEvent;
+import kr.paycore.core.observability.PaymentMdc;
 import kr.paycore.core.ops.DeadLetter;
 import kr.paycore.core.ops.DeadLetterRepository;
 import kr.paycore.core.outbox.OutboxWriter;
@@ -85,6 +86,13 @@ public class OpsService {
         Payment payment = payments.findByIdForUpdate(paymentId)
                 .orElseThrow(() -> new PaymentNotRepairableException(paymentId, "결제를 찾을 수 없습니다."));
 
+        try (PaymentMdc.Scope scope = PaymentMdc.with(payment.paymentId(), payment.endToEndId())) {
+            return repairLocked(payment, request, actor);
+        }
+    }
+
+    private Payment repairLocked(Payment payment, RepairRequest request, String actor) {
+        String paymentId = payment.paymentId();
         PaymentStatus target =
                 request.decision() == RepairDecision.CLEARED ? PaymentStatus.CLEARED : PaymentStatus.FAILED;
         PaymentStatus before = payment.status();

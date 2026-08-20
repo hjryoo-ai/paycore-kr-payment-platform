@@ -138,6 +138,21 @@ public class InquiryService {
         return Optional.of(new OutgoingMessage(inquiryMsgId, ClearingMsgType.PACS_028, payment.endToEndId(), payload));
     }
 
+    /**
+     * 송신에 실패한 조회 기록을 지운다.
+     *
+     * <p>시도 횟수는 {@code CLEARING_MESSAGE_LOG} 의 pacs.028 건수로 센다. 기록은 송신 전에 커밋되므로
+     * JMS 가 죽어 있으면 <b>아무것도 물어보지 못한 채 시도 횟수만 소진</b>되고, 결국 조회를 한 번도
+     * 못 한 결제가 MANUAL_REVIEW 로 밀려난다. 조회는 돈을 움직이지 않으므로 되돌려 다시 묻는 편이 안전하다.
+     */
+    @Transactional
+    public void undoInquiry(String inquiryMsgId) {
+        clearingLogs.findById(inquiryMsgId).ifPresent(log -> {
+            clearingLogs.delete(log);
+            InquiryService.log.warn("조회 송신 실패 — 기록을 되돌린다 msgId={}", inquiryMsgId);
+        });
+    }
+
     /** 조회로도 결론이 나지 않았다. 추측하지 않고 사람에게 넘긴다(docs §7.3 마지막 갈래). */
     @Transactional
     public boolean escalateToManualReview(String paymentId) {

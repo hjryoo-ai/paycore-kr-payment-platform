@@ -6,6 +6,7 @@ import kr.paycore.common.id.Ids;
 import kr.paycore.common.mask.AccountMasker;
 import kr.paycore.core.domain.Payment;
 import kr.paycore.core.domain.PaymentStatus;
+import kr.paycore.core.observability.PaymentMdc;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -71,19 +72,24 @@ public class PaymentIntakeService {
 
         try {
             Payment saved = store.insert(payment, "channel-api");
-            log.info(
-                    "결제 접수 paymentId={} endToEndId={} debtor={} creditor={} bank={} amount={}",
-                    saved.paymentId(),
-                    saved.endToEndId(),
-                    AccountMasker.mask(saved.debtorAccount()),
-                    AccountMasker.mask(saved.creditorAccount()),
-                    saved.creditorBank(),
-                    saved.amount());
+            // 접수 로그부터 endToEndId 가 붙어야 한다. 이 줄이 결제 1건의 로그 추적이 시작되는 지점이다.
+            try (PaymentMdc.Scope scope = PaymentMdc.with(saved.paymentId(), saved.endToEndId())) {
+                log.info(
+                        "결제 접수 paymentId={} endToEndId={} debtor={} creditor={} bank={} amount={}",
+                        saved.paymentId(),
+                        saved.endToEndId(),
+                        AccountMasker.mask(saved.debtorAccount()),
+                        AccountMasker.mask(saved.creditorAccount()),
+                        saved.creditorBank(),
+                        saved.amount());
+            }
             return IntakeOutcome.created(saved);
         } catch (DataIntegrityViolationException e) {
             // 동시에 들어온 같은 키의 요청이 먼저 커밋했다. UNIQUE 제약이 잡아준 정상 경로다.
             Payment winner = store.findByIdempotencyKey(idempotencyKey).orElseThrow(() -> e);
-            log.info("멱등 경합 감지 — 기존 응답 재생 idempotencyKey={} paymentId={}", idempotencyKey, winner.paymentId());
+            try (PaymentMdc.Scope scope = PaymentMdc.with(winner.paymentId(), winner.endToEndId())) {
+                log.info("멱등 경합 감지 — 기존 응답 재생 idempotencyKey={} paymentId={}", idempotencyKey, winner.paymentId());
+            }
             return replay(idempotencyKey, command, winner);
         }
     }

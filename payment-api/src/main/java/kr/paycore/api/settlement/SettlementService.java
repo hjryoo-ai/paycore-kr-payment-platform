@@ -6,6 +6,7 @@ import kr.paycore.core.domain.PaymentRepository;
 import kr.paycore.core.domain.PaymentStatus;
 import kr.paycore.core.event.PaymentSettledEvent;
 import kr.paycore.core.inbox.InboxGuard;
+import kr.paycore.core.observability.PaymentMdc;
 import kr.paycore.core.statemachine.IllegalStateTransitionException;
 import kr.paycore.core.statemachine.PaymentStateMachine;
 import org.slf4j.Logger;
@@ -59,6 +60,12 @@ public class SettlementService {
             return false;
         }
 
+        try (PaymentMdc.Scope scope = PaymentMdc.with(payment.paymentId(), payment.endToEndId())) {
+            return applySettled(payment, event);
+        }
+    }
+
+    private boolean applySettled(Payment payment, PaymentSettledEvent event) {
         try {
             return stateMachine.transition(payment, PaymentStatus.SETTLED, TRIGGERED_BY, "원장 반영 완료");
         } catch (IllegalStateTransitionException e) {

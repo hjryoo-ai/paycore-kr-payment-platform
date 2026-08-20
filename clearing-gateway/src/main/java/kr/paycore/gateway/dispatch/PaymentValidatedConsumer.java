@@ -5,6 +5,7 @@ import kr.paycore.common.clearing.ClearingMessageException;
 import kr.paycore.core.event.PaymentEventType;
 import kr.paycore.core.event.PaymentValidatedEvent;
 import kr.paycore.core.messaging.PermanentMessageException;
+import kr.paycore.core.observability.PaymentMdc;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.kafka.annotation.KafkaListener;
@@ -63,6 +64,14 @@ public class PaymentValidatedConsumer {
             throw new PermanentMessageException("PaymentValidated 역직렬화 실패 eventId=" + eventId, e);
         }
 
+        // 준비와 송신을 한 스코프로 묶는다. 송신 로그는 트랜잭션 밖이라 스코프를 여기서 열지 않으면
+        // 정작 'pacs.008 을 보냈다'는 가장 중요한 줄에 endToEndId 가 빠진다.
+        try (PaymentMdc.Scope scope = PaymentMdc.with(event.paymentId(), event.endToEndId())) {
+            dispatch(eventId, event);
+        }
+    }
+
+    private void dispatch(String eventId, PaymentValidatedEvent event) {
         Optional<OutgoingMessage> prepared;
         try {
             prepared = dispatcher.prepare(eventId, event);

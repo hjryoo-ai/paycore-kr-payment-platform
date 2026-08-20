@@ -2,6 +2,7 @@ package kr.paycore.gateway.inquiry;
 
 import java.util.Optional;
 import kr.paycore.core.domain.Payment;
+import kr.paycore.core.observability.PaymentMdc;
 import kr.paycore.gateway.dispatch.ClearingSender;
 import kr.paycore.gateway.dispatch.OutgoingMessage;
 import org.slf4j.Logger;
@@ -62,8 +63,10 @@ public class ClearingWatchdog {
     public int markTimedOut() {
         int marked = 0;
         for (Payment payment : timeouts.findTimedOut()) {
-            if (timeouts.markUnknown(payment.paymentId())) {
-                marked++;
+            try (PaymentMdc.Scope scope = PaymentMdc.with(payment.paymentId(), payment.endToEndId())) {
+                if (timeouts.markUnknown(payment.paymentId())) {
+                    marked++;
+                }
             }
         }
         return marked;
@@ -73,24 +76,41 @@ public class ClearingWatchdog {
     public int processUnknown() {
         int acted = 0;
         for (Payment payment : inquiries.findUnknown()) {
-            switch (inquiries.decide(payment)) {
-                case SEND -> {
-                    Optional<OutgoingMessage> prepared = inquiries.prepareInquiry(payment.paymentId());
-                    if (prepared.isPresent()) {
-                        sender.send(prepared.get());
-                        acted++;
-                    }
-                }
-                case ESCALATE -> {
-                    if (inquiries.escalateToManualReview(payment.paymentId())) {
-                        acted++;
-                    }
-                }
-                case WAIT -> {
-                    // backoff 대기 중.
-                }
+            // 한 건이 실패해도 나머지는 계속 본다. 조회를 못 보낸 결제 하나가 전체 주기를 멈추면
+            // 그 뒤의 UNKNOWN 들은 아무도 확인해 주지 않는다.
+            try (PaymentMdc.Scope scope = PaymentMdc.with(payment.paymentId(), payment.endToEndId())) {
+                acted += actOn(payment);
+            } catch (RuntimeException e) {
+                log.error("조회 처리 실패 paymentId={} — 다음 주기에 재시도한다", payment.paymentId(), e);
             }
         }
         return acted;
+    }
+
+    private int actOn(Payment payment) {
+        switch (inquiries.decide(payment)) {
+            case SEND -> {
+                Optional<OutgoingMessage> prepared = inquiries.prepareInquiry(payment.paymentId());
+                if (prepared.isEmpty()) {
+                    return 0;
+                }
+                try {
+                    sender.send(prepared.get());
+                } catch (RuntimeException e) {
+                    // 기록은 됐는데 나가지 못했다. 시도 횟수만 소진되면 조회를 한 번도 못 한 채
+                    // MANUAL_REVIEW 로 밀려나므로, 기록을 되돌려 다음 주기에 다시 시도하게 한다.
+                    inquiries.undoInquiry(prepared.get().msgId());
+                    throw e;
+                }
+                return 1;
+            }
+            case ESCALATE -> {
+                return inquiries.escalateToManualReview(payment.paymentId()) ? 1 : 0;
+            }
+            default -> {
+                // backoff 대기 중.
+                return 0;
+            }
+        }
     }
 }
