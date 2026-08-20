@@ -1,0 +1,46 @@
+server:
+  port: 8085
+  shutdown: graceful
+
+spring:
+  application:
+    name: recon-batch
+  datasource:
+    url: ${PAYCORE_DB_URL:jdbc:oracle:thin:@//localhost:1521/FREEPDB1}
+    username: ${PAYCORE_DB_USER:paycore}
+    password: ${PAYCORE_DB_PASSWORD:paycore}
+    driver-class-name: oracle.jdbc.OracleDriver
+    hikari:
+      maximum-pool-size: 10
+      connection-timeout: 10000
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: none
+    properties:
+      hibernate.format_sql: true
+  flyway:
+    enabled: false
+
+paycore:
+  recon:
+    eod-dir: ${PAYCORE_EOD_DIR:./data/eod}
+    report-dir: ${PAYCORE_REPORT_DIR:./data/recon}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true
+  health:
+    defaults:
+      enabled: true
+
+logging:
+  level:
+    kr.paycore: DEBUG
