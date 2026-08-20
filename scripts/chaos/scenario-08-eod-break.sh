@@ -40,8 +40,26 @@ else
 fi
 
 print_timeline "$PID"
-
-log "복구"
-sim_reset
 ok "시나리오 #8 통과: 방치된 UNKNOWN 이 대사에서 MISSING_AT_US 로 잡혔다"
-log "참고: 복구 후 밀려 있던 pacs.028 이 처리되어 이 건은 곧 CLEARED 로 확정된다 — 재대사하면 불일치가 닫힌다"
+
+# 4) 복구 — 처리 기록은 그대로 두고 소비만 재개한다.
+#    시뮬레이터 저장소까지 지우면 밀려 있던 pacs.028 이 '받은 적 없음(NOOR)' 답을 받아
+#    이미 나간 돈이 FAILED 로 기록된다. 그때 대사는 STATUS_MISMATCH 를 잡아내는데,
+#    그건 복구가 아니라 또 다른 사고다. 여기서 보여야 하는 것은 정상 복구다.
+log "복구 — 청산망 소비 재개 (처리 기록은 유지)"
+sim_mode NORMAL
+wait_for_status "$PID" SETTLED 180
+log "밀려 있던 pacs.028 이 ACSC 로 답해 CLEARED → 원장 반영 → SETTLED 로 확정됐다"
+
+log "재대사 — 불일치가 닫히는지 확인"
+AFTER=$(recon_run)
+printf '%s\n' "$AFTER" | python3 -m json.tool
+REMAINING=$(recon_breaks_for "$PID" || true)
+if [ -z "$REMAINING" ]; then
+    ok "재대사에서 이 건의 불일치가 사라졌다 — 대사는 사후에 스스로 닫힌다"
+else
+    bad "아직 불일치가 남아 있다: $REMAINING"; exit 1
+fi
+
+sim_reset
+ok "시나리오 #8 완료: 검출 → 복구 → 재대사로 해소까지 확인"
