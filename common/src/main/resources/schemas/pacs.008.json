@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://paycore.kr/schemas/pacs.008.json",
+  "title": "pacs.008 — FIToFICustomerCreditTransfer (축약)",
+  "description": "고객 이체 지시. 실제 ISO 20022 규격의 핵심 필드만 뽑은 자체 JSON 이다(README 단순화 선언).",
+  "type": "object",
+  "properties": {
+    "grpHdr": {
+      "type": "object",
+      "properties": {
+        "msgId": { "$ref": "common-defs.json#/$defs/msgId" },
+        "creDtTm": { "$ref": "common-defs.json#/$defs/isoDateTime" },
+        "nbOfTxs": { "type": "integer", "const": 1 },
+        "instgAgt": { "$ref": "common-defs.json#/$defs/memberId" },
+        "instdAgt": { "$ref": "common-defs.json#/$defs/memberId" }
+      },
+      "required": ["msgId", "creDtTm", "nbOfTxs", "instgAgt", "instdAgt"],
+      "additionalProperties": false
+    },
+    "cdtTrfTxInf": {
+      "type": "object",
+      "properties": {
+        "pmtId": {
+          "type": "object",
+          "properties": {
+            "endToEndId": { "$ref": "common-defs.json#/$defs/endToEndId" },
+            "txId": { "$ref": "common-defs.json#/$defs/msgId" }
+          },
+          "required": ["endToEndId", "txId"],
+          "additionalProperties": false
+        },
+        "intrBkSttlmAmt": { "$ref": "common-defs.json#/$defs/amount" },
+        "dbtrAcct": { "$ref": "common-defs.json#/$defs/account" },
+        "dbtrAgt": { "$ref": "common-defs.json#/$defs/memberId" },
+        "cdtrAcct": { "$ref": "common-defs.json#/$defs/account" },
+        "cdtrAgt": { "$ref": "common-defs.json#/$defs/memberId" },
+        "rmtInf": { "type": ["string", "null"], "maxLength": 140 }
+      },
+      "required": ["pmtId", "intrBkSttlmAmt", "dbtrAcct", "dbtrAgt", "cdtrAcct", "cdtrAgt"],
+      "additionalProperties": false
+    }
+  },
+  "required": ["grpHdr", "cdtTrfTxInf"],
+  "additionalProperties": false
+}

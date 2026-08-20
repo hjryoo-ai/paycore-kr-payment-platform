@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://paycore.kr/schemas/common-defs.json",
+  "title": "PayCore-KR 청산 메시지 공통 정의",
+  "$defs": {
+    "msgId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 36,
+      "pattern": "^[0-9A-Za-z._-]+$",
+      "description": "메시지 1건의 고유 ID. ISO 20022 의 UETR 역할이며 inbox dedup 키로도 쓰인다."
+    },
+    "endToEndId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 35,
+      "pattern": "^[0-9A-Za-z._-]+$",
+      "description": "전 구간 추적 ID. 재송신되어도 바뀌지 않으며 청산망의 중복 판정 기준이다."
+    },
+    "isoDateTime": {
+      "type": "string",
+      "format": "date-time",
+      "description": "UTC ISO-8601. 오프셋을 반드시 포함한다."
+    },
+    "memberId": {
+      "type": "string",
+      "pattern": "^[0-9]{3}$",
+      "description": "참가기관(은행) 코드 3자리. 실제 BIC 대신 국내 금융기관 코드를 쓴다."
+    },
+    "account": {
+      "type": "string",
+      "minLength": 6,
+      "maxLength": 32,
+      "pattern": "^[0-9-]+$"
+    },
+    "amount": {
+      "type": "object",
+      "description": "원화 정수 금액. 부동소수점 금지라 value 는 integer 다.",
+      "properties": {
+        "ccy": { "type": "string", "enum": ["KRW"] },
+        "value": { "type": "integer", "minimum": 1, "maximum": 999999999999999999 }
+      },
+      "required": ["ccy", "value"],
+      "additionalProperties": false
+    },
+    "txSts": {
+      "type": "string",
+      "enum": ["ACSC", "ACSP", "PDNG", "RJCT"],
+      "description": "ACSC 결제완료 / ACSP 처리중 / PDNG 보류 / RJCT 거절"
+    },
+    "stsRsn": {
+      "type": "string",
+      "enum": ["AM04", "AC04", "AC06", "DUPL", "NOOR", "NARR"],
+      "description": "AM04 잔액부족 / AC04 해지계좌 / AC06 거래정지 / DUPL 중복 / NOOR 원거래 수신이력 없음 / NARR 기타"
+    },
+    "orgnlMsgNmId": {
+      "type": "string",
+      "enum": ["pacs.008", "pacs.028"],
+      "description": "이 응답이 무엇에 대한 답인지. pacs.008=원 이체지시, pacs.028=상태조회"
+    }
+  }
+}

@@ -1,0 +1,19 @@
+# 테스트는 시간이 아니라 사건으로 검증한다. 대기 시간은 짧게, 판정은 명시적으로.
+paycore:
+  simulator:
+    request-queue: TEST.CLR.REQ
+    response-queue: TEST.CLR.RES
+    eod-dir: build/test-eod
+    default-delay: 1s
+    out-of-order-batch: 2
+    out-of-order-max-hold: 1s
+
+spring:
+  jms:
+    template:
+      receive-timeout: 5s
+
+logging:
+  level:
+    kr.paycore: DEBUG
+    org.testcontainers: INFO

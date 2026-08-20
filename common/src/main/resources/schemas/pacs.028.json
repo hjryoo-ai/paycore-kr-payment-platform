@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://paycore.kr/schemas/pacs.028.json",
+  "title": "pacs.028 — FIToFIPaymentStatusRequest (축약)",
+  "description": "상태 조회(inquiry). timeout 을 실패로 단정하지 않기 위한 유일한 확인 수단이다(§7.3).",
+  "type": "object",
+  "properties": {
+    "grpHdr": {
+      "type": "object",
+      "properties": {
+        "msgId": { "$ref": "common-defs.json#/$defs/msgId" },
+        "creDtTm": { "$ref": "common-defs.json#/$defs/isoDateTime" }
+      },
+      "required": ["msgId", "creDtTm"],
+      "additionalProperties": false
+    },
+    "txInf": {
+      "type": "object",
+      "properties": {
+        "orgnlMsgId": { "$ref": "common-defs.json#/$defs/msgId" },
+        "orgnlMsgNmId": { "type": "string", "const": "pacs.008" },
+        "orgnlEndToEndId": { "$ref": "common-defs.json#/$defs/endToEndId" },
+        "orgnlTxId": { "$ref": "common-defs.json#/$defs/msgId" }
+      },
+      "required": ["orgnlMsgId", "orgnlMsgNmId", "orgnlEndToEndId", "orgnlTxId"],
+      "additionalProperties": false
+    }
+  },
+  "required": ["grpHdr", "txInf"],
+  "additionalProperties": false
+}

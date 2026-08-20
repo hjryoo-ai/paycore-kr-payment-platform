@@ -1,0 +1,31 @@
+# 시간을 짧게 줄여 시나리오를 테스트 안에서 재현한다. 로직은 운영과 동일하다.
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: none
+  # 테스트에서는 게이트웨이 컨텍스트가 스키마를 만든다. 운영 소유권(ADR-0004)과는 별개다.
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  kafka:
+    consumer:
+      group-id: clearing-gateway-it
+      auto-offset-reset: earliest
+
+paycore:
+  core:
+    outbox-poll-interval: 300ms
+    sweeper-enabled: false
+  gateway:
+    consumer-group: clearing-gateway-it
+    response-timeout: 2s
+    timeout-scan-interval: 300ms
+    inquiry-scan-interval: 300ms
+    # 3단계 = 최대 3회 조회. 다 쓰면 MANUAL_REVIEW.
+    inquiry-backoff: [500ms, 500ms, 500ms]
+
+logging:
+  level:
+    kr.paycore: DEBUG
+    org.testcontainers: INFO
+    org.apache.kafka: WARN

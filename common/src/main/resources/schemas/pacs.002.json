@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://paycore.kr/schemas/pacs.002.json",
+  "title": "pacs.002 — FIToFIPaymentStatusReport (축약)",
+  "description": "pacs.008 또는 pacs.028 에 대한 상태 응답. orgnlMsgNmId 로 무엇에 대한 답인지 구분한다.",
+  "type": "object",
+  "properties": {
+    "grpHdr": {
+      "type": "object",
+      "properties": {
+        "msgId": { "$ref": "common-defs.json#/$defs/msgId" },
+        "creDtTm": { "$ref": "common-defs.json#/$defs/isoDateTime" }
+      },
+      "required": ["msgId", "creDtTm"],
+      "additionalProperties": false
+    },
+    "txInfAndSts": {
+      "type": "object",
+      "properties": {
+        "orgnlMsgId": { "$ref": "common-defs.json#/$defs/msgId" },
+        "orgnlMsgNmId": { "$ref": "common-defs.json#/$defs/orgnlMsgNmId" },
+        "orgnlEndToEndId": { "$ref": "common-defs.json#/$defs/endToEndId" },
+        "orgnlTxId": { "$ref": "common-defs.json#/$defs/msgId" },
+        "txSts": { "$ref": "common-defs.json#/$defs/txSts" },
+        "stsRsn": { "$ref": "common-defs.json#/$defs/stsRsn" },
+        "addtlInf": { "type": ["string", "null"], "maxLength": 200 }
+      },
+      "required": ["orgnlMsgId", "orgnlMsgNmId", "orgnlEndToEndId", "orgnlTxId", "txSts"],
+      "additionalProperties": false
+    }
+  },
+  "required": ["grpHdr", "txInfAndSts"],
+  "additionalProperties": false
+}

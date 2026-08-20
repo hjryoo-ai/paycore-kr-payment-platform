@@ -1,0 +1,41 @@
+server:
+  port: 8083
+  shutdown: graceful
+
+spring:
+  application:
+    name: clearing-simulator
+  artemis:
+    mode: native
+    broker-url: ${PAYCORE_JMS_URL:tcp://localhost:61616}
+    user: ${PAYCORE_JMS_USER:paycore}
+    password: ${PAYCORE_JMS_PASSWORD:paycore}
+
+paycore:
+  simulator:
+    request-queue: ${PAYCORE_MQ_REQ:CLR.REQ}
+    response-queue: ${PAYCORE_MQ_RES:CLR.RES}
+    eod-dir: ${PAYCORE_EOD_DIR:./data/eod}
+    # DELAY 모드 기본 지연. 게이트웨이 response-timeout(10s)보다 길어야 timeout 경로를 재현한다.
+    default-delay: 15s
+    out-of-order-batch: 2
+    out-of-order-max-hold: 2s
+    zone: Asia/Seoul
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true
+  health:
+    defaults:
+      enabled: true
+
+logging:
+  level:
+    kr.paycore: DEBUG
