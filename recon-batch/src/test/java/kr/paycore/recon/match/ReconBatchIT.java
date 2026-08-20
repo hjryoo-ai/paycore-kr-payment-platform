@@ -66,6 +66,26 @@ class ReconBatchIT extends AbstractReconIT {
                 .contains("MISSING_AT_US")
                 .contains(unknown.paymentId())
                 .contains("pacs.028 조회 이력을 먼저 확인한다");
+        // 조사 순서 번호는 실제로 출력된 항목에만 붙는다. 유형을 건너뛰며 고정 번호를 쓰면
+        // "1. ... 3. ..." 처럼 빠진 자리가 생겨 리포트가 잘못된 것처럼 보인다.
+        assertThat(report).contains("1. `MISSING_AT_US`");
+    }
+
+    @Test
+    @DisplayName("조사 순서는 유형을 건너뛰어도 1,2,3 으로 이어진다")
+    void investigationOrderIsRenumbered() {
+        LocalDate date = today();
+        // MISSING_AT_CLEARING(1순위)과 MISSING_AT_US(3순위)만 만든다 — 2순위는 비어 있다.
+        Payment settled = givenPayment(PaymentStatus.SETTLED, 1_000_000L);
+        givenJournal(settled);
+        Payment unknown = givenPayment(PaymentStatus.UNKNOWN, 2_000_000L);
+        givenClearingEod(date, List.of(acsc(unknown)));
+
+        ReconSummary summary = reconService.run(date);
+        String report = readReport(summary.reportFile());
+
+        assertThat(report).contains("1. `MISSING_AT_CLEARING`").contains("2. `MISSING_AT_US`");
+        assertThat(report).doesNotContain("3. `");
     }
 
     @Test

@@ -116,20 +116,18 @@ public class ReconReportWriter {
         }
 
         md.append("\n## 조사 순서 제안\n\n");
-        if (byType.containsKey("MISSING_AT_CLEARING")) {
-            md.append("1. `MISSING_AT_CLEARING` 부터 본다 — 우리는 돈이 나갔다고 아는데 청산망이 모르는 건이다.\n");
-        }
-        if (byType.containsKey("STATUS_MISMATCH")) {
-            md.append("2. `STATUS_MISMATCH` — 양쪽이 같은 이체를 두고 결과를 다르게 말한다. 청산망 원장을 직접 확인해야 한다.\n");
-        }
-        if (byType.containsKey("MISSING_AT_US")) {
-            md.append("3. `MISSING_AT_US` — 대개 `UNKNOWN` 으로 방치된 건이다. pacs.028 조회 이력을 먼저 확인한다.\n");
-        }
-        if (byType.containsKey("LEDGER_MISMATCH")) {
-            md.append("4. `LEDGER_MISMATCH` — 돈의 이동보다 기록의 문제일 가능성이 높다. 분개 누락/중복을 본다.\n");
-        }
-        if (byType.containsKey("AMOUNT_MISMATCH")) {
-            md.append("5. `AMOUNT_MISMATCH` — 금액이 다르다. 접수 금액과 pacs.008 송신 원문을 대조한다.\n");
+        // 번호는 실제로 출력되는 항목에만 붙인다. 유형을 건너뛰면서 고정 번호를 쓰면
+        // "1. ... 3. ..." 처럼 빠진 자리가 생겨 리포트가 잘못된 것처럼 보인다.
+        int order = 1;
+        for (String type : INVESTIGATION_ORDER) {
+            if (byType.containsKey(type)) {
+                md.append(order++)
+                        .append(". `")
+                        .append(type)
+                        .append("` — ")
+                        .append(guidance(type))
+                        .append('\n');
+            }
         }
 
         md.append("\n## 표본\n\n계좌번호는 마스킹되어 있다.\n\n");
@@ -143,6 +141,21 @@ public class ReconReportWriter {
                 .append(AccountMasker.mask(p.debtorAccount()))
                 .append('\n'));
         return md.toString();
+    }
+
+    /** 조사 우선순위. 돈이 실제로 움직인 쪽부터 본다. */
+    private static final List<String> INVESTIGATION_ORDER =
+            List.of("MISSING_AT_CLEARING", "STATUS_MISMATCH", "MISSING_AT_US", "LEDGER_MISMATCH", "AMOUNT_MISMATCH");
+
+    private static String guidance(String type) {
+        return switch (type) {
+            case "MISSING_AT_CLEARING" -> "우리는 돈이 나갔다고 아는데 청산망이 모르는 건이다. 가장 먼저 본다.";
+            case "STATUS_MISMATCH" -> "양쪽이 같은 이체를 두고 결과를 다르게 말한다. 청산망 원장을 직접 확인해야 한다.";
+            case "MISSING_AT_US" -> "대개 `UNKNOWN` 으로 방치된 건이다. pacs.028 조회 이력을 먼저 확인한다.";
+            case "LEDGER_MISMATCH" -> "돈의 이동보다 기록의 문제일 가능성이 높다. 분개 누락/중복을 본다.";
+            case "AMOUNT_MISMATCH" -> "금액이 다르다. 접수 금액과 pacs.008 송신 원문을 대조한다.";
+            default -> "확인이 필요하다.";
+        };
     }
 
     private static String meaning(String type) {

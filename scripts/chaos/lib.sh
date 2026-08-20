@@ -109,3 +109,34 @@ for b in json.load(sys.stdin):
         print("%s|%s" % (b["breakType"], b["detail"]))
 ' "$1"
 }
+
+# 지나간 전이가 이력에 있는가. 일시적 상태(CLEARED 등)를 폴링하면 결제가 폴링 간격보다 빨리
+# 다음 상태로 가버려 놓친다 — 상태는 사라지지만 이력은 남으므로 이력을 근거로 삼는다.
+history_has_transition() {
+    local id="$1" want_from="$2" want_to="$3"
+    curl -fsS "$API/api/v1/payments/$id" | python3 -c '
+import sys, json
+d = json.load(sys.stdin)
+want_from, want_to = sys.argv[1], sys.argv[2]
+for h in d["history"]:
+    if (h["from"] or "") == want_from and h["to"] == want_to:
+        raise SystemExit(0)
+raise SystemExit(1)
+' "$want_from" "$want_to"
+}
+
+# 이력에 특정 전이가 나타날 때까지 기다린다.
+wait_for_transition() {
+    local id="$1" want_from="$2" want_to="$3" timeout="${4:-120}"
+    local deadline=$(( $(date +%s) + timeout ))
+    while :; do
+        history_has_transition "$id" "$want_from" "$want_to" && {
+            ok "$id 이력에 $want_from -> $want_to 확인"; return 0; }
+        if [ "$(date +%s)" -ge "$deadline" ]; then
+            bad "$id 이력에 $want_from -> $want_to 가 ${timeout}s 안에 나타나지 않았다"
+            print_timeline "$id" >&2
+            return 1
+        fi
+        sleep 2
+    done
+}
