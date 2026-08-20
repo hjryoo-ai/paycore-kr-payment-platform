@@ -11,7 +11,10 @@ WORKDIR /app
 # 이름은 build.gradle.kts 에서 고정한다. glob 을 쓰면 -plain.jar 와 둘 다 매칭되어
 # 어느 쪽이 남는지가 파일명 정렬 순서에 달리게 된다.
 COPY build/libs/app.jar /app/app.jar
-RUN mkdir -p /app/data && chown -R app:app /app
+# 볼륨 마운트 지점을 이미지 안에 미리 만든다.
+# named volume 이 비어 있으면 Docker 는 이미지의 해당 경로 내용과 소유권을 복사해 초기화하는데,
+# 그 경로가 이미지에 없으면 root 소유의 빈 디렉터리를 새로 만든다 — 그러면 app 사용자가 쓰지 못한다.
+RUN mkdir -p /app/data/eod /app/data/recon && chown -R app:app /app
 USER app
 
 ENV JAVA_OPTS="-XX:MaxRAMPercentage=70 -Duser.timezone=Asia/Seoul"
