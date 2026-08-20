@@ -102,7 +102,7 @@ Artemis 콘솔 <http://localhost:8161> (`paycore/paycore`) · Kafka 호스트 �
 | 2 | 상태머신 + Outbox + Kafka | ✅ |
 | 3 | 청산 연동 + 시뮬레이터 | ✅ |
 | 4 | 복식부기 원장 | ✅ |
-| 5 | EOD 3-way 대사 | ⬜ |
+| 5 | EOD 3-way 대사 | ✅ |
 | 6 | DLQ + 운영 repair | ⬜ |
 | 7 | CI/CD + 관측성 | ⬜ |
 | 8 | React 운영 대시보드 | ⬜ |
@@ -213,7 +213,36 @@ scripts/chaos/scenario-04-duplicate-response.sh          # 중복 응답 → 전
 소유하는 쪽이 아니다. 잔액도 저장하지 않고 `LEDGER_ENTRY` 합계에서 유도한다 — 잔액 컬럼을 따로 두면
 그것과 명세가 어긋나는 순간 어느 쪽이 진실인지 아무도 모른다.
 
-## API (Phase 1~4 구현분)
+## 일마감 3-way 대사 (Phase 5)
+
+세 주장을 맞춰 본다. 어느 하나를 진실로 놓고 나머지를 맞추는 것이 아니라, **세 출처가 각자 무엇을
+안다고 말하는지**를 나란히 놓는다.
+
+| 출처 | 무엇을 아는가 |
+|---|---|
+| `PAYMENT` | 우리가 아는 것 |
+| 청산망 EOD CSV | 청산망이 아는 것 — 우리 DB 를 보고 만든 값이 아니다 |
+| `JOURNAL` + `LEDGER_ENTRY` | 회계가 아는 것 |
+
+| break 유형 | 의미 | 조사 우선순위 |
+|---|---|---|
+| `MISSING_AT_CLEARING` | 우리는 지급 완료로 아는데 청산망 파일에 없음 | 1 — 유령 지급일 수 있다 |
+| `STATUS_MISMATCH` | 양쪽이 같은 이체의 결과를 다르게 말함 ([ADR-0010](docs/adr/0010-recon-scope-and-break-types.md)) | 2 |
+| `MISSING_AT_US` | 청산망에는 결론이 있는데 우리는 미확정 — **방치된 `UNKNOWN`** (시나리오 #8) | 3 |
+| `LEDGER_MISMATCH` | 결제 상태와 원장이 어긋남 (분개 누락·합계 불일치·금액 불일치) | 4 |
+| `AMOUNT_MISMATCH` | 양쪽이 아는 금액이 다름 | 5 |
+
+판정 로직([`ReconEngine`](recon-batch/src/main/java/kr/paycore/recon/match/ReconEngine.java))은 **순수 함수**다 —
+DB 도 시계도 만지지 않는다. 대사 규칙은 조합을 전수로 확인해야 하고, 컨테이너를 띄워야만 검증되는
+규칙은 전수로 확인할 수 없다.
+
+마감을 **세우는** 경우도 규칙이다: EOD 파일을 못 받았거나 한 줄이라도 깨져 있으면 예외로 멈춘다.
+못 받은 것을 0건으로 처리하면 그날 전 건이 `MISSING_AT_CLEARING` 으로 잡혀 아무도 못 믿는 결과가 나온다.
+
+재실행하면 그 날짜의 `OPEN` 만 교체하고 `RESOLVED` 는 남긴다 — 운영자가 처리한 기록을 배치가 지우면
+같은 건을 매일 처음부터 다시 조사하게 된다.
+
+## API (Phase 1~5 구현분)
 
 | 메서드 | 경로 | 설명 |
 |---|---|---|
@@ -252,6 +281,13 @@ curl -si -X POST localhost:8081/api/v1/payments \
 | `GET` | `/api/v1/ledger/journals/{paymentId}` | 분개 + 명세 2줄 (계좌 마스킹, `imbalance` 포함) |
 | `GET` | `/api/v1/ledger/accounts/{accountId}` | 차변/대변 합계와 순액 — 저장값이 아니라 유도값 |
 | `GET` | `/api/v1/ledger/imbalance` | 전체 장부 불균형. `0` 이 아니면 즉시 조사 대상 |
+
+대사 API (`:8085`):
+
+| 메서드 | 경로 | 설명 |
+|---|---|---|
+| `POST` | `/api/v1/recon/run?date=YYYY-MM-DD` | 일마감 대사 실행 → 요약 + 리포트 경로 |
+| `GET` | `/api/v1/recon/breaks?date=&status=` | 불일치 목록 (대시보드 입력) |
 
 ## 단순화 선언 (실제 결제망과 다른 점)
 
