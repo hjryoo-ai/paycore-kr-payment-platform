@@ -9,6 +9,9 @@ public interface LedgerEntryRepository extends JpaRepository<LedgerEntry, String
 
     List<LedgerEntry> findByJournalIdOrderByDrCrAsc(String journalId);
 
+    /** 대사에서 분개 여러 벌의 명세를 한 번에 가져온다 — 건마다 조회하면 N+1 이 된다. */
+    List<LedgerEntry> findByJournalIdIn(java.util.Collection<String> journalIds);
+
     List<LedgerEntry> findByAccountId(String accountId);
 
     /**

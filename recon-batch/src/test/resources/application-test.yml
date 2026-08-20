@@ -1,0 +1,24 @@
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: none
+  # 테스트에서는 대사 컨텍스트가 스키마를 만든다. 운영 소유권(ADR-0004)과는 별개다.
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+paycore:
+  core:
+    outbox-enabled: false
+    sweeper-enabled: false
+  recon:
+    eod-dir: build/test-eod-recon
+    report-dir: build/test-report-recon
+    # 시뮬레이터를 띄우지 않는다. 파일이 없으면 즉시 실패해야 하고, 그 동작도 테스트 대상이다.
+    simulator-base-url: http://localhost:1
+    fetch-timeout: 1s
+
+logging:
+  level:
+    kr.paycore: DEBUG
+    org.apache.kafka: WARN

@@ -77,3 +77,35 @@ for h in d["history"]:
     print("   %s  %-16s -> %-16s by %s  %s" % (h["at"], frm, h["to"], h["triggeredBy"], reason))
 '
 }
+
+RECON="${PAYCORE_RECON:-http://localhost:8085}"
+
+business_date() { TZ=Asia/Seoul date +%Y-%m-%d; }
+
+# 청산망이 이 이체를 처리 기록으로 갖고 있을 때까지 기다린다.
+wait_for_clearing_record() {
+    local e2e="$1" timeout="${2:-60}"
+    local deadline=$(( $(date +%s) + timeout ))
+    while :; do
+        clearing_knows "$e2e" && { ok "청산망이 $e2e 를 처리했다"; return 0; }
+        if [ "$(date +%s)" -ge "$deadline" ]; then
+            bad "청산망이 ${timeout}s 안에 $e2e 를 처리하지 않았다"; return 1
+        fi
+        sleep 1
+    done
+}
+
+recon_run() {
+    curl -fsS -X POST "$RECON/api/v1/recon/run?date=$(business_date)"
+}
+
+recon_breaks_for() {
+    curl -fsS "$RECON/api/v1/recon/breaks?date=$(business_date)" \
+        | python3 -c '
+import sys, json
+target = sys.argv[1]
+for b in json.load(sys.stdin):
+    if b.get("paymentId") == target:
+        print("%s|%s" % (b["breakType"], b["detail"]))
+' "$1"
+}

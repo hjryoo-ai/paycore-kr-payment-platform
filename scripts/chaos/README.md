@@ -16,9 +16,11 @@ scripts/chaos/scenario-04-duplicate-response.sh          # 중복 pacs.002
 | 2 | `PROCESS_BUT_NO_RESPONSE` | `UNKNOWN` → inquiry → `CLEARED`, 이체 1건, 재송신 0회 | `TimeoutAndInquiryIT#scenario2_processedButNoResponse` |
 | 3 | `DROP_REQUEST` | `UNKNOWN` → inquiry(`NOOR`) → `FAILED` 확정 | `TimeoutAndInquiryIT#scenario3_neverReceived` |
 | 4 | `DUPLICATE_RESPONSE` | 상태 전이 1회, 이벤트 1건 | `ClearingIdempotencyIT#scenario4_duplicateResponse` |
+| 8 | `PROCESS_BUT_NO_RESPONSE` → `DOWN` 후 EOD | `MISSING_AT_US` break 생성 + md 리포트 | `ReconBatchIT#scenario8_unattendedUnknownIsDetected` |
 
 시나리오 #1(이중 클릭)과 #6(발행 직전 크래시)은 각각 `PaymentIntakeIdempotencyIT`,
-`OutboxCrashRecoveryIT` 로 자동화되어 있다. #5·#7·#8 은 Phase 4~6 에서 추가된다.
+`OutboxCrashRecoveryIT` 로 자동화되어 있다. #5(consumer 강제 재소비)는 `LedgerIdempotencyIT`
+가 실제로 오프셋을 되감아 재현한다. #7(poison message)은 Phase 6 에서 추가된다.
 
 ## 시뮬레이터 모드 API
 

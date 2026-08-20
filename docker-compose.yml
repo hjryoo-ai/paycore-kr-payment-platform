@@ -196,11 +196,14 @@ services:
       <<: *app-env
       PAYCORE_EOD_DIR: /app/data/eod
       PAYCORE_REPORT_DIR: /app/data/recon
+      PAYCORE_SIMULATOR_URL: http://clearing-simulator:8083
     volumes:
       - eod-data:/app/data/eod
       - recon-data:/app/data/recon
     depends_on:
       payment-api: {condition: service_healthy}
+      # EOD 파일을 HTTP 로도 받아온다 (볼륨 공유가 없어도 마감이 돌아야 한다)
+      clearing-simulator: {condition: service_healthy}
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:8085/actuator/health | grep -q '\"status\":\"UP\"'"]
       interval: 10s

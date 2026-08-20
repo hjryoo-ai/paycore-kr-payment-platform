@@ -19,13 +19,29 @@ spring:
       ddl-auto: none
     properties:
       hibernate.format_sql: true
+  # 스키마는 payment-api 만 마이그레이션한다 (ADR-0004).
   flyway:
     enabled: false
+  kafka:
+    bootstrap-servers: ${PAYCORE_KAFKA:localhost:29092}
+    producer:
+      acks: all
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
 
 paycore:
+  core:
+    events-topic: payment.events
+    # 대사 배치는 읽기만 한다. 아웃박스 발행도 접수 재처리도 이 프로세스의 책임이 아니다.
+    outbox-enabled: false
+    sweeper-enabled: false
   recon:
+    simulator-base-url: ${PAYCORE_SIMULATOR_URL:http://localhost:8083}
     eod-dir: ${PAYCORE_EOD_DIR:./data/eod}
     report-dir: ${PAYCORE_REPORT_DIR:./data/recon}
+    zone: Asia/Seoul
+    suspense-account: ${PAYCORE_SUSPENSE_ACCOUNT:CLEARING_SUSPENSE}
+    fetch-timeout: 10s
 
 management:
   endpoints:

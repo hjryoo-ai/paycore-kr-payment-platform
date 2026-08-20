@@ -82,5 +82,8 @@ public interface PaymentRepository extends JpaRepository<Payment, String> {
 
     List<Payment> findByStatus(PaymentStatus status, Pageable pageable);
 
+    /** 대사 대상 추출용. 업무일자 안에 접수된 건 전부를 상태와 무관하게 가져온다 (docs §5.6). */
+    List<Payment> findByCreatedAtGreaterThanEqualAndCreatedAtLessThanOrderByCreatedAtAsc(Instant from, Instant to);
+
     long countByStatus(PaymentStatus status);
 }
