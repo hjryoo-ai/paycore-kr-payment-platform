@@ -1,0 +1,25 @@
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: none
+  # 테스트에서는 원장 컨텍스트가 스키마를 만든다. 운영 소유권(ADR-0004)과는 별개다.
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  kafka:
+    consumer:
+      group-id: ledger-service-it
+      auto-offset-reset: earliest
+
+paycore:
+  core:
+    outbox-poll-interval: 300ms
+    sweeper-enabled: false
+  ledger:
+    consumer-group: ledger-service-it
+    suspense-account: CLEARING_SUSPENSE
+
+logging:
+  level:
+    kr.paycore: DEBUG
+    org.apache.kafka: WARN

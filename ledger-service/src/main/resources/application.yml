@@ -1,0 +1,70 @@
+server:
+  port: 8084
+  shutdown: graceful
+
+spring:
+  application:
+    name: ledger-service
+  datasource:
+    url: ${PAYCORE_DB_URL:jdbc:oracle:thin:@//localhost:1521/FREEPDB1}
+    username: ${PAYCORE_DB_USER:paycore}
+    password: ${PAYCORE_DB_PASSWORD:paycore}
+    driver-class-name: oracle.jdbc.OracleDriver
+    hikari:
+      maximum-pool-size: 10
+      connection-timeout: 10000
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: none
+    properties:
+      hibernate.format_sql: true
+  # 스키마는 payment-api 만 마이그레이션한다 (ADR-0004).
+  flyway:
+    enabled: false
+  kafka:
+    bootstrap-servers: ${PAYCORE_KAFKA:localhost:29092}
+    consumer:
+      group-id: ${PAYCORE_LEDGER_GROUP:ledger-service}
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    producer:
+      acks: all
+      retries: 5
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      properties:
+        enable.idempotence: true
+    listener:
+      ack-mode: record
+
+paycore:
+  core:
+    events-topic: payment.events
+    outbox-poll-interval: 2s
+    # 접수 측 재처리는 payment-api 의 책임이다 (ADR-0008 와 같은 이유).
+    sweeper-enabled: false
+  ledger:
+    # 고객 계좌에서 나간 돈이 청산 완료 전까지 머무는 자리 (docs §5.5)
+    suspense-account: ${PAYCORE_SUSPENSE_ACCOUNT:CLEARING_SUSPENSE}
+    consumer-group: ${PAYCORE_LEDGER_GROUP:ledger-service}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true
+  health:
+    defaults:
+      enabled: true
+
+logging:
+  level:
+    kr.paycore: DEBUG
