@@ -27,6 +27,19 @@ public interface OutboxEventRepository extends JpaRepository<OutboxEvent, String
                     """, nativeQuery = true)
     List<OutboxEvent> claimPending(@Param("batchSize") int batchSize);
 
+    /** 미발행 이벤트 수. outbox lag 알림의 한 축이다. */
+    @Query("select count(e) from OutboxEvent e where e.status = kr.paycore.core.outbox.OutboxStatus.NEW")
+    long countPending();
+
+    /**
+     * 가장 오래된 미발행 이벤트의 생성 시각.
+     *
+     * <p>건수만으로는 부족하다. 100건이 방금 쌓인 것과 1건이 30분째 못 나가는 것은 완전히 다른 사고인데,
+     * 건수 지표는 후자를 조용히 넘긴다.
+     */
+    @Query("select min(e.createdAt) from OutboxEvent e where e.status = kr.paycore.core.outbox.OutboxStatus.NEW")
+    java.time.Instant oldestPendingCreatedAt();
+
     long countByStatus(OutboxStatus status);
 
     List<OutboxEvent> findByAggregateIdOrderByCreatedAtAsc(String aggregateId);

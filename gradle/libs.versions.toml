@@ -47,6 +47,7 @@ flyway-database-oracle = { module = "org.flywaydb:flyway-database-oracle" }
 oracle-jdbc            = { module = "com.oracle.database.jdbc:ojdbc11" }
 
 # --- observability ---
+micrometer-core                = { module = "io.micrometer:micrometer-core" }
 micrometer-registry-prometheus = { module = "io.micrometer:micrometer-registry-prometheus" }
 
 # --- misc ---

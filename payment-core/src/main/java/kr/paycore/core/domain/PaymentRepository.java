@@ -82,6 +82,9 @@ public interface PaymentRepository extends JpaRepository<Payment, String> {
 
     List<Payment> findByStatus(PaymentStatus status, Pageable pageable);
 
+    /** 그 상태에 가장 오래 머문 건부터. 관측에서 재는 것은 평균이 아니라 최댓값이다(docs §10.3). */
+    List<Payment> findByStatusOrderByUpdatedAtAsc(PaymentStatus status, Pageable pageable);
+
     /** 대사 대상 추출용. 업무일자 안에 접수된 건 전부를 상태와 무관하게 가져온다 (docs §5.6). */
     List<Payment> findByCreatedAtGreaterThanEqualAndCreatedAtLessThanOrderByCreatedAtAsc(Instant from, Instant to);
 

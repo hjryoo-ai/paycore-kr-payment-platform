@@ -19,6 +19,7 @@ import kr.paycore.core.event.PaymentEventType;
 import kr.paycore.core.event.PaymentFailedEvent;
 import kr.paycore.core.event.PaymentUnknownEvent;
 import kr.paycore.core.inbox.InboxGuard;
+import kr.paycore.core.observability.PaymentMdc;
 import kr.paycore.core.outbox.OutboxWriter;
 import kr.paycore.core.statemachine.IllegalStateTransitionException;
 import kr.paycore.core.statemachine.PaymentStateMachine;
@@ -85,7 +86,12 @@ public class ClearingResponseHandler {
             return;
         }
         Payment payment = found.get();
+        try (PaymentMdc.Scope scope = PaymentMdc.with(payment.paymentId(), endToEndId)) {
+            handleCorrelated(payment, response, rawPayload, endToEndId);
+        }
+    }
 
+    private void handleCorrelated(Payment payment, Pacs002 response, String rawPayload, String endToEndId) {
         String orgnlMsgId = response.txInfAndSts().orgnlMsgId();
         // 존재 확인만으로는 부족하다. '우리가 보낸 메시지인가'뿐 아니라 '이 결제에 대해 보낸 메시지인가'까지
         // 봐야 한다. 결제 A 의 endToEndId 에 결제 B 의 msgId 를 실은 응답이 A 의 상태를 확정하면 안 된다.

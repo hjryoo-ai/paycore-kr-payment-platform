@@ -23,7 +23,13 @@ paycore:
       max-backoff: 300ms
 
 logging:
+  # 테스트 로그는 사람이 읽는다. 구조화 JSON 은 운영 설정이라 여기서만 끈다.
+  structured:
+    format:
+      console:
   level:
     kr.paycore: DEBUG
     org.testcontainers: INFO
     com.github.dockerjava: WARN
+
+# 테스트 로그는 사람이 읽는다. 구조화 JSON 은 운영 설정이므로 여기서만 끈다.

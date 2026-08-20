@@ -9,6 +9,7 @@ import kr.paycore.core.event.DuplicateSuspectedEvent;
 import kr.paycore.core.event.PaymentEventType;
 import kr.paycore.core.event.PaymentRejectedEvent;
 import kr.paycore.core.event.PaymentValidatedEvent;
+import kr.paycore.core.observability.PaymentMdc;
 import kr.paycore.core.outbox.OutboxWriter;
 import kr.paycore.core.statemachine.PaymentStateMachine;
 import org.slf4j.Logger;
@@ -62,8 +63,14 @@ public class PaymentProcessingService {
             return;
         }
         Payment payment = found.get();
+        try (PaymentMdc.Scope scope = PaymentMdc.with(payment.paymentId(), payment.endToEndId())) {
+            validateLocked(payment);
+        }
+    }
+
+    private void validateLocked(Payment payment) {
         if (payment.status() != PaymentStatus.RECEIVED) {
-            log.debug("이미 검증된 건 — 건너뜀 paymentId={} status={}", paymentId, payment.status());
+            log.debug("이미 검증된 건 — 건너뜀 paymentId={} status={}", payment.paymentId(), payment.status());
             return;
         }
 

@@ -8,6 +8,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneId;
@@ -19,6 +20,7 @@ import kr.paycore.core.domain.Payment;
 import kr.paycore.core.domain.PaymentStatus;
 import kr.paycore.core.domain.PaymentStatusHistory;
 import kr.paycore.core.domain.PaymentStatusHistoryRepository;
+import kr.paycore.core.observability.PaymentMetrics;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -39,12 +41,15 @@ class PaymentStateMachineTest {
     private static final Clock CLOCK = Clock.fixed(NOW, ZoneId.of("Asia/Seoul"));
 
     private PaymentStatusHistoryRepository histories;
+    private PaymentMetrics metrics;
     private PaymentStateMachine stateMachine;
 
     @BeforeEach
     void setUp() {
         histories = mock(PaymentStatusHistoryRepository.class);
-        stateMachine = new PaymentStateMachine(histories, CLOCK);
+        // 메트릭은 실제 레지스트리로 둔다 — 목으로 두면 '전이가 세어지는가'를 확인할 수 없다.
+        metrics = new PaymentMetrics(new SimpleMeterRegistry());
+        stateMachine = new PaymentStateMachine(histories, metrics, CLOCK);
     }
 
     /** docs §4.2 상태 다이어그램을 그대로 옮긴 기대 전이표. 구현과 독립적으로 여기 한 번 더 적는다. */

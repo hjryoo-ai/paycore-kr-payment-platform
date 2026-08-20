@@ -19,6 +19,7 @@ import kr.paycore.core.domain.Payment;
 import kr.paycore.core.domain.PaymentStatus;
 import kr.paycore.core.domain.PaymentStatusHistory;
 import kr.paycore.core.domain.PaymentStatusHistoryRepository;
+import kr.paycore.core.observability.PaymentMetrics;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -48,10 +49,12 @@ public class PaymentStateMachine {
     private static final Map<PaymentStatus, Set<PaymentStatus>> ALLOWED = buildTable();
 
     private final PaymentStatusHistoryRepository histories;
+    private final PaymentMetrics metrics;
     private final Clock clock;
 
-    public PaymentStateMachine(PaymentStatusHistoryRepository histories, Clock clock) {
+    public PaymentStateMachine(PaymentStatusHistoryRepository histories, PaymentMetrics metrics, Clock clock) {
         this.histories = histories;
+        this.metrics = metrics;
         this.clock = clock;
     }
 
@@ -99,6 +102,7 @@ public class PaymentStateMachine {
 
         payment.applyStatus(to, clock.instant());
         histories.save(new PaymentStatusHistory(payment.paymentId(), from, to, triggeredBy, reason, clock.instant()));
+        metrics.transitioned(from, to);
         log.info(
                 "상태 전이 paymentId={} {} -> {} triggeredBy={} reason={}",
                 payment.paymentId(),

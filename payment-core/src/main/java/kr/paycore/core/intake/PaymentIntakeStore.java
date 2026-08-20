@@ -6,6 +6,8 @@ import kr.paycore.core.domain.PaymentRepository;
 import kr.paycore.core.domain.PaymentStatus;
 import kr.paycore.core.domain.PaymentStatusHistory;
 import kr.paycore.core.domain.PaymentStatusHistoryRepository;
+import kr.paycore.core.observability.PaymentMdc;
+import kr.paycore.core.observability.PaymentMetrics;
 import kr.paycore.core.process.PaymentAcceptedEvent;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Component;
@@ -25,12 +27,17 @@ public class PaymentIntakeStore {
     private final PaymentRepository payments;
     private final PaymentStatusHistoryRepository histories;
     private final ApplicationEventPublisher events;
+    private final PaymentMetrics metrics;
 
     public PaymentIntakeStore(
-            PaymentRepository payments, PaymentStatusHistoryRepository histories, ApplicationEventPublisher events) {
+            PaymentRepository payments,
+            PaymentStatusHistoryRepository histories,
+            ApplicationEventPublisher events,
+            PaymentMetrics metrics) {
         this.payments = payments;
         this.histories = histories;
         this.events = events;
+        this.metrics = metrics;
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW, readOnly = true)
@@ -47,10 +54,14 @@ public class PaymentIntakeStore {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public Payment insert(Payment payment, String triggeredBy) {
         Payment saved = payments.saveAndFlush(payment);
-        histories.save(new PaymentStatusHistory(
-                saved.paymentId(), null, PaymentStatus.RECEIVED, triggeredBy, "채널 접수", saved.createdAt()));
-        // AFTER_COMMIT 리스너가 검증을 시작한다. 커밋 전에는 아무 일도 일어나지 않는다.
-        events.publishEvent(new PaymentAcceptedEvent(saved.paymentId()));
+        try (PaymentMdc.Scope scope = PaymentMdc.with(saved.paymentId(), saved.endToEndId())) {
+            histories.save(new PaymentStatusHistory(
+                    saved.paymentId(), null, PaymentStatus.RECEIVED, triggeredBy, "채널 접수", saved.createdAt()));
+            // 접수 TPS 의 원천. 멱등 재요청은 여기까지 오지 않으므로 '새 결제'만 세어진다.
+            metrics.accepted();
+            // AFTER_COMMIT 리스너가 검증을 시작한다. 커밋 전에는 아무 일도 일어나지 않는다.
+            events.publishEvent(new PaymentAcceptedEvent(saved.paymentId()));
+        }
         return saved;
     }
 }

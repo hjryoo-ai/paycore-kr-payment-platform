@@ -3,6 +3,7 @@ package kr.paycore.api.ops;
 import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import kr.paycore.common.id.Ids;
+import kr.paycore.core.observability.PaymentMetrics;
 import kr.paycore.core.ops.DeadLetter;
 import kr.paycore.core.ops.DeadLetterRepository;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -31,11 +32,13 @@ public class DeadLetterConsumer {
     private static final Logger log = LoggerFactory.getLogger(DeadLetterConsumer.class);
 
     private final DeadLetterRepository deadLetters;
+    private final PaymentMetrics metrics;
     private final Ids ids;
     private final Clock clock;
 
-    public DeadLetterConsumer(DeadLetterRepository deadLetters, Ids ids, Clock clock) {
+    public DeadLetterConsumer(DeadLetterRepository deadLetters, PaymentMetrics metrics, Ids ids, Clock clock) {
         this.deadLetters = deadLetters;
+        this.metrics = metrics;
         this.ids = ids;
         this.clock = clock;
     }
@@ -77,6 +80,7 @@ public class DeadLetterConsumer {
             log.debug("이미 적재된 DLT 레코드 topic={} partition={} offset={}", originalTopic, partition, offset);
             return;
         }
+        metrics.deadLetterReceived(entry.eventType());
         log.error(
                 "DLT 적재 — 운영자 확인 필요 deadLetterId={} 원본토픽={} eventType={} 원인={}",
                 entry.deadLetterId(),

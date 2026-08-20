@@ -16,6 +16,7 @@ import kr.paycore.core.domain.PaymentRepository;
 import kr.paycore.core.domain.PaymentStatus;
 import kr.paycore.core.event.PaymentEventType;
 import kr.paycore.core.event.PaymentManualReviewEvent;
+import kr.paycore.core.observability.PaymentMetrics;
 import kr.paycore.core.outbox.OutboxWriter;
 import kr.paycore.core.statemachine.PaymentStateMachine;
 import kr.paycore.gateway.config.GatewayProperties;
@@ -46,6 +47,7 @@ public class InquiryService {
     private final OutboxWriter outbox;
     private final ClearingMessageCodec codec;
     private final GatewayProperties properties;
+    private final PaymentMetrics metrics;
     private final Ids ids;
     private final Clock clock;
 
@@ -56,6 +58,7 @@ public class InquiryService {
             OutboxWriter outbox,
             ClearingMessageCodec codec,
             GatewayProperties properties,
+            PaymentMetrics metrics,
             Ids ids,
             Clock clock) {
         this.payments = payments;
@@ -64,6 +67,7 @@ public class InquiryService {
         this.outbox = outbox;
         this.codec = codec;
         this.properties = properties;
+        this.metrics = metrics;
         this.ids = ids;
         this.clock = clock;
     }
@@ -124,6 +128,7 @@ public class InquiryService {
                 payload,
                 clock.instant()));
 
+        metrics.inquirySent(attemptsOf(paymentId));
         log.warn(
                 "상태조회 송신 (재송신 아님) paymentId={} endToEndId={} 시도={}회차 원msgId={}",
                 paymentId,

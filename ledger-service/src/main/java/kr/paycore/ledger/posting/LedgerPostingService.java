@@ -13,6 +13,7 @@ import kr.paycore.core.ledger.Journal;
 import kr.paycore.core.ledger.JournalRepository;
 import kr.paycore.core.ledger.LedgerEntry;
 import kr.paycore.core.ledger.LedgerEntryRepository;
+import kr.paycore.core.observability.PaymentMdc;
 import kr.paycore.core.outbox.OutboxWriter;
 import kr.paycore.ledger.config.LedgerProperties;
 import org.slf4j.Logger;
@@ -75,6 +76,12 @@ public class LedgerPostingService {
         if (!inbox.claim(properties.consumerGroup(), eventId)) {
             return false;
         }
+        try (PaymentMdc.Scope scope = PaymentMdc.with(event.paymentId(), event.endToEndId())) {
+            return postClaimed(event);
+        }
+    }
+
+    private boolean postClaimed(PaymentClearedEvent event) {
         // 비즈니스 키 방어. UNIQUE 위반을 잡는 대신 미리 확인하는 이유는, 제약 위반이 나면 트랜잭션
         // 전체가 rollback-only 로 오염되어 inbox 기록까지 함께 사라지기 때문이다.
         if (journals.existsByPaymentId(event.paymentId())) {

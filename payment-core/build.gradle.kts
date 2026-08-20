@@ -9,6 +9,8 @@ dependencies {
     api("org.springframework.boot:spring-boot-starter-validation")
     api(libs.spring.boot.kafka)
     api(libs.spring.kafka)
+    // 메트릭은 core 가 낸다 — 어느 프로세스에 패키징되든 같은 지표가 나와야 한다 (docs §10.3).
+    api(libs.micrometer.core)
     api(libs.spring.boot.flyway)
     api(libs.flyway.core)
     runtimeOnly(libs.flyway.database.oracle)

@@ -100,6 +100,10 @@ paycore:
       - "092"   # 토스뱅크
 
 management:
+  metrics:
+    tags:
+      # 모든 지표에 서비스 이름을 붙인다. 대시보드에서 어느 프로세스의 값인지 구분해야 한다.
+      application: payment-api
   endpoints:
     web:
       exposure:
@@ -113,6 +117,13 @@ management:
     defaults:
       enabled: true
 
+# 관측성 (docs §10.3)
+# 콘솔 로그를 JSON 으로 낸다 — 결제 1건의 전 구간 로그를 endToEndId 로 한 번에 검색하려면
+# 사람이 읽기 좋은 줄바꿈보다 기계가 파싱할 수 있는 형태가 먼저다.
+# PAYCORE_LOG_FORMAT=  (빈 값) 으로 두면 개발 중에는 평문으로 돌아간다.
 logging:
+  structured:
+    format:
+      console: ${PAYCORE_LOG_FORMAT:ecs}
   level:
-    kr.paycore: DEBUG
+    kr.paycore: ${PAYCORE_LOG_LEVEL:DEBUG}

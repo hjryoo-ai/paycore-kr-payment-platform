@@ -1,5 +1,6 @@
 package kr.paycore.gateway.dispatch;
 
+import kr.paycore.core.observability.PaymentMetrics;
 import kr.paycore.gateway.config.GatewayProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -22,10 +23,12 @@ public class ClearingSender {
 
     private final JmsTemplate jmsTemplate;
     private final GatewayProperties properties;
+    private final PaymentMetrics metrics;
 
-    public ClearingSender(JmsTemplate jmsTemplate, GatewayProperties properties) {
+    public ClearingSender(JmsTemplate jmsTemplate, GatewayProperties properties, PaymentMetrics metrics) {
         this.jmsTemplate = jmsTemplate;
         this.properties = properties;
+        this.metrics = metrics;
     }
 
     public void send(OutgoingMessage message) {
@@ -33,6 +36,8 @@ public class ClearingSender {
             jms.setStringProperty(HEADER_MSG_TYPE, message.msgType());
             return jms;
         });
+        // 송신 건수는 '재송신 0회'를 지표로도 확인할 수 있게 해 준다.
+        metrics.clearingMessageSent(message.msgType());
         log.info("{} 송신 msgId={} endToEndId={}", message.msgType(), message.msgId(), message.endToEndId());
     }
 }
