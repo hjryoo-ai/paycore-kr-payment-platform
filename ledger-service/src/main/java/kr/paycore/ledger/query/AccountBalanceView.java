@@ -1,7 +1,5 @@
 package kr.paycore.ledger.query;
 
-import kr.paycore.common.mask.AccountMasker;
-
 /**
  * 계좌 잔액. 저장된 값이 아니라 {@code LEDGER_ENTRY} 합계에서 유도한 값이다 (docs §5.5).
  *
@@ -10,6 +8,6 @@ import kr.paycore.common.mask.AccountMasker;
 public record AccountBalanceView(String accountId, long debitTotal, long creditTotal, long net) {
 
     public AccountBalanceView {
-        accountId = AccountMasker.mask(accountId);
+        accountId = LedgerAccounts.display(accountId);
     }
 }

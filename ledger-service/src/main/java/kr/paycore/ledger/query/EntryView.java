@@ -1,11 +1,9 @@
 package kr.paycore.ledger.query;
 
-import kr.paycore.common.mask.AccountMasker;
-
 /** 분개 명세 한 줄. 계좌번호는 응답에서도 마스킹한다(CLAUDE.md). */
 public record EntryView(String entryId, String accountId, String drCr, long amount) {
 
     public EntryView {
-        accountId = AccountMasker.mask(accountId);
+        accountId = LedgerAccounts.display(accountId);
     }
 }
