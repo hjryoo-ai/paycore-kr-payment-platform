@@ -1,0 +1,358 @@
+{
+  "uid": "paycore-overview",
+  "title": "PayCore-KR — 결제 파이프라인",
+  "description": "docs §10.3. 패널은 전부 알림 규칙과 짝을 이룬다 — 아무도 보지 않을 지표는 넣지 않았다.",
+  "tags": [
+    "paycore",
+    "payment"
+  ],
+  "timezone": "Asia/Seoul",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "접수 TPS",
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 0,
+        "y": 0
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(paycore_payment_accepted_total[1m]))",
+          "legendFormat": "accepted/s",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "description": "새로 접수된 결제만 센다. 멱등 재요청은 여기 오지 않으므로 실제 이체 요청 속도다."
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "상태별 결제 건수",
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 8,
+        "y": 0
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "paycore_payment_count{status!=\"SETTLED\"}",
+          "legendFormat": "{{status}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "description": "SETTLED 는 계속 쌓이기만 하므로 제외했다. 여기 남아 있는 것이 '아직 끝나지 않은 돈'이다."
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "UNKNOWN 최장 체류 시간",
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 16,
+        "y": 0
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "paycore_payment_unknown_age_seconds",
+          "legendFormat": "가장 오래된 UNKNOWN",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 300
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "description": "평균이 아니라 최댓값이다. 방치된 한 건이 문제이지 전체 평균이 문제인 적은 없다. 300초를 넘으면 알림."
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "상태 전이",
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 7
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum by (to) (rate(paycore_payment_transitions_total[1m]))",
+          "legendFormat": "-> {{to}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "description": "게이지로는 '지금 몇 건'만 보인다. 오늘 UNKNOWN 을 몇 번 거쳐 갔는지는 이 그래프에만 있다."
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "청산망 송신 / 상태조회",
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 7
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum by (msgType) (rate(paycore_clearing_messages_sent_total[1m]))",
+          "legendFormat": "{{msgType}}",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(paycore_clearing_inquiries_total[1m]))",
+          "legendFormat": "pacs.028 조회",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "description": "pacs.008 은 결제당 1건이어야 한다. 이 선이 접수 TPS 보다 높으면 재송신이 일어나고 있다는 뜻이다."
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Outbox lag",
+      "gridPos": {
+        "h": 6,
+        "w": 8,
+        "x": 0,
+        "y": 14
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "paycore_outbox_lag_seconds",
+          "legendFormat": "가장 오래된 미발행 이벤트",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 60
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "description": "건수가 아니라 나이를 본다. 100건이 방금 쌓인 것과 1건이 30분째 못 나가는 것은 다른 사고다."
+    },
+    {
+      "id": 7,
+      "type": "stat",
+      "title": "미처리 DLT",
+      "gridPos": {
+        "h": 6,
+        "w": 8,
+        "x": 8,
+        "y": 14
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum(paycore_deadletter_open)",
+          "legendFormat": "DLT 미처리",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "description": "0 이 정상이다. 1건이라도 있으면 사람이 원인을 봐야 한다."
+    },
+    {
+      "id": 8,
+      "type": "stat",
+      "title": "미해결 대사 불일치",
+      "gridPos": {
+        "h": 6,
+        "w": 8,
+        "x": 16,
+        "y": 14
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum(paycore_recon_break_open)",
+          "legendFormat": "recon break OPEN",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "description": "당일 업무일자 기준. 닫힐 때까지 계속 보여야 한다."
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "운영자 개입",
+      "gridPos": {
+        "h": 6,
+        "w": 12,
+        "x": 0,
+        "y": 20
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum by (action) (increase(paycore_ops_actions_total[1h]))",
+          "legendFormat": "{{action}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "description": "이 값이 늘면 자동화가 못 하는 일이 늘고 있다는 뜻이다. 0 이 목표지만 0 을 강제하면 사람이 우회로를 만든다."
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "DLT 유입",
+      "gridPos": {
+        "h": 6,
+        "w": 12,
+        "x": 12,
+        "y": 20
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum by (eventType) (increase(paycore_deadletter_received_total[1h]))",
+          "legendFormat": "{{eventType}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "description": "누적 유입. 잔량(미처리 DLT)과 함께 봐야 '들어오는데 안 치우는 중'인지 구분된다."
+    }
+  ]
+}

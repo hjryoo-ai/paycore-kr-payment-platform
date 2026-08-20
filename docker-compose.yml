@@ -220,6 +220,7 @@ services:
     ports: ["9090:9090"]
     volumes:
       - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./docker/prometheus/rules:/etc/prometheus/rules:ro
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:9090/-/healthy >/dev/null || exit 1"]
       interval: 15s
@@ -237,6 +238,8 @@ services:
       GF_USERS_ALLOW_SIGN_UP: "false"
     volumes:
       - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
+      # 대시보드는 파일로 프로비저닝한다 — 손으로 import 하면 그 사람 노트북에만 남는다.
+      - ./docker/grafana/dashboards:/var/lib/grafana/dashboards:ro
       - grafana-data:/var/lib/grafana
     depends_on: [prometheus]
     healthcheck:

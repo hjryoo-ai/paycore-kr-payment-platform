@@ -1,0 +1,13 @@
+# 대시보드 자동 프로비저닝. 손으로 import 하는 순간 "그 사람 노트북에만 있는 대시보드"가 된다.
+apiVersion: 1
+providers:
+  - name: paycore
+    orgId: 1
+    folder: PayCore-KR
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

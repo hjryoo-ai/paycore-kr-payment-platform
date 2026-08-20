@@ -1,6 +1,9 @@
 apiVersion: 1
 datasources:
   - name: Prometheus
+    # 대시보드 JSON 이 이 uid 로 참조한다. 자동 생성 uid 에 맡기면 프로비저닝된 대시보드가
+    # "데이터소스를 찾을 수 없음"으로 비어 버린다.
+    uid: prometheus
     type: prometheus
     access: proxy
     url: http://prometheus:9090
