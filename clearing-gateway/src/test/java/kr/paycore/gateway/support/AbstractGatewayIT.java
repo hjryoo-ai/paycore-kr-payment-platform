@@ -138,6 +138,15 @@ public abstract class AbstractGatewayIT {
         return clearingLogs.countByPaymentIdAndMsgTypeAndDirection(paymentId, ClearingMsgType.PACS_002, Direction.IN);
     }
 
+    /** 이 결제로 실제 송신된 pacs.008 의 msgId. 응답을 위조·상관짓는 테스트가 이 값을 쓴다. */
+    protected String sentPacs008MsgId(String paymentId) {
+        return clearingLogs
+                .findTopByPaymentIdAndMsgTypeAndDirectionOrderBySentAtDesc(
+                        paymentId, ClearingMsgType.PACS_008, Direction.OUT)
+                .orElseThrow(() -> new IllegalStateException("pacs.008 송신 기록이 없다 paymentId=" + paymentId))
+                .msgId();
+    }
+
     protected long processedMessageCount() {
         return processedMessages.count();
     }

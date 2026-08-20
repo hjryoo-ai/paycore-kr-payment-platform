@@ -1,6 +1,7 @@
 package kr.paycore.gateway.response;
 
 import java.time.Clock;
+import java.time.Instant;
 import java.util.Optional;
 import kr.paycore.common.clearing.ClearingMsgType;
 import kr.paycore.common.clearing.Direction;
@@ -12,6 +13,7 @@ import kr.paycore.core.clearing.ClearingMessageLogRepository;
 import kr.paycore.core.domain.Payment;
 import kr.paycore.core.domain.PaymentRepository;
 import kr.paycore.core.domain.PaymentStatus;
+import kr.paycore.core.event.ClearingContradictionEvent;
 import kr.paycore.core.event.PaymentClearedEvent;
 import kr.paycore.core.event.PaymentEventType;
 import kr.paycore.core.event.PaymentFailedEvent;
@@ -85,9 +87,18 @@ public class ClearingResponseHandler {
         Payment payment = found.get();
 
         String orgnlMsgId = response.txInfAndSts().orgnlMsgId();
-        if (!clearingLogs.existsById(orgnlMsgId)) {
-            // 우리가 보낸 적 없는 메시지에 대한 응답을 받아들이면, 상대가 상태를 마음대로 바꿀 수 있게 된다.
-            log.error("송신 이력이 없는 원메시지에 대한 응답 — 무시한다 orgnlMsgId={} endToEndId={}", orgnlMsgId, endToEndId);
+        // 존재 확인만으로는 부족하다. '우리가 보낸 메시지인가'뿐 아니라 '이 결제에 대해 보낸 메시지인가'까지
+        // 봐야 한다. 결제 A 의 endToEndId 에 결제 B 의 msgId 를 실은 응답이 A 의 상태를 확정하면 안 된다.
+        boolean ourMessageForThisPayment = clearingLogs
+                .findById(orgnlMsgId)
+                .filter(sent -> sent.paymentId().equals(payment.paymentId()))
+                .isPresent();
+        if (!ourMessageForThisPayment) {
+            log.error(
+                    "이 결제의 송신 이력이 아닌 원메시지에 대한 응답 — 무시한다 orgnlMsgId={} endToEndId={} paymentId={}",
+                    orgnlMsgId,
+                    endToEndId,
+                    payment.paymentId());
             return;
         }
 
@@ -110,17 +121,16 @@ public class ClearingResponseHandler {
             return;
         }
 
+        // 전이가 updatedAt 을 덮어쓰기 전에 잡아 둔다. PaymentUnknown 의 sentAt 이 가리켜야 하는 것은
+        // '이 상태가 된 시각'이지 지금이 아니다 — 대사와 SLA 타이머가 이 값으로 경과 시간을 잰다.
+        Instant enteredCurrentStatusAt = payment.updatedAt();
+        PaymentStatus statusBefore = payment.status();
+
         boolean changed;
         try {
             changed = stateMachine.transition(payment, outcome.target(), response.msgId(), outcome.reason());
         } catch (IllegalStateTransitionException e) {
-            // §7.4 — 확정된 상태를 늦게 온 응답이 덮어쓰지 않는다. 사실만 남기고 사람을 부른다.
-            log.error(
-                    "청산 응답이 확정 상태와 모순된다 — 자동으로 덮어쓰지 않는다 paymentId={} 현재={} 응답={} msgId={}",
-                    payment.paymentId(),
-                    payment.status(),
-                    outcome.target(),
-                    response.msgId());
+            escalateContradiction(payment, response, outcome, statusBefore);
             return;
         }
         if (!changed) {
@@ -128,7 +138,47 @@ public class ClearingResponseHandler {
             return;
         }
 
-        emit(payment, response, outcome);
+        emit(payment, response, outcome, enteredCurrentStatusAt);
+    }
+
+    /**
+     * 모순 처리 (docs §7.4). 상태를 뒤집지 않는다 — 뒤집으면 이미 나간 돈을 실패로 적거나 그 반대가 된다.
+     *
+     * <p>{@code CLEARED} 처럼 사람이 확인할 수 있는 상태라면 {@code MANUAL_REVIEW} 로 올린다. 종결 상태라
+     * 전이할 길이 없으면 상태는 그대로 두되 <b>알림 이벤트는 반드시 낸다</b> — 조용히 로그만 남기면
+     * 아무도 모르는 불일치가 장부에 남는다.
+     */
+    private void escalateContradiction(
+            Payment payment, Pacs002 response, ClearingOutcome outcome, PaymentStatus statusBefore) {
+        boolean escalated = false;
+        if (PaymentStateMachine.isAllowed(statusBefore, PaymentStatus.MANUAL_REVIEW)) {
+            escalated = stateMachine.transition(
+                    payment,
+                    PaymentStatus.MANUAL_REVIEW,
+                    response.msgId(),
+                    "청산 응답 모순: " + statusBefore + " 인데 " + outcome.target() + " 응답");
+        }
+
+        log.error(
+                "청산 응답이 확정 상태와 모순된다 — 덮어쓰지 않고 {} paymentId={} 현재={} 응답={} msgId={}",
+                escalated ? "MANUAL_REVIEW 로 올린다" : "상태를 유지한 채 알린다",
+                payment.paymentId(),
+                statusBefore,
+                outcome.target(),
+                response.msgId());
+
+        outbox.append(
+                payment.paymentId(),
+                PaymentEventType.CLEARING_CONTRADICTION,
+                new ClearingContradictionEvent(
+                        payment.paymentId(),
+                        payment.endToEndId(),
+                        response.txInfAndSts().orgnlTxId(),
+                        statusBefore.name(),
+                        outcome.target().name(),
+                        outcome.reasonCode(),
+                        escalated,
+                        clock.instant()));
     }
 
     /** pacs.002 를 상태 언어로 번역한다. 여기가 "timeout ≠ 실패"의 반대편 — "응답 ≠ 확정" 지점이다. */
@@ -156,7 +206,7 @@ public class ClearingResponseHandler {
         return new ClearingOutcome(PaymentStatus.FAILED, rsn == null ? "RJCT" : rsn.name(), "청산망 거절", false);
     }
 
-    private void emit(Payment payment, Pacs002 response, ClearingOutcome outcome) {
+    private void emit(Payment payment, Pacs002 response, ClearingOutcome outcome, Instant enteredCurrentStatusAt) {
         boolean byInquiry = response.answersInquiry();
         String orgnlTxId = response.txInfAndSts().orgnlTxId();
 
@@ -197,7 +247,7 @@ public class ClearingResponseHandler {
                                 payment.endToEndId(),
                                 orgnlTxId,
                                 payment.amount(),
-                                payment.updatedAt(),
+                                enteredCurrentStatusAt,
                                 clock.instant()));
             default -> log.warn("이벤트를 정의하지 않은 전이 target={}", outcome.target());
         }

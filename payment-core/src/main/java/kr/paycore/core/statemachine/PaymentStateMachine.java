@@ -36,7 +36,8 @@ import org.springframework.stereotype.Component;
  * </ol>
  *
  * <p>역행 금지: {@code CLEARED} 이후에는 {@code UNKNOWN} 으로 돌아갈 수 없다. 늦게 도착한 pacs.002 가
- * 확정된 상태를 덮어쓰면 그게 곧 이중 지급의 시작이다.
+ * 확정된 상태를 덮어쓰면 그게 곧 이중 지급의 시작이다. 그런 모순은 상태를 뒤집는 대신
+ * {@code CLEARED -> MANUAL_REVIEW} 로 사람에게 넘긴다(docs §7.4) — 판단을 미루는 것이지 되돌리는 것이 아니다.
  */
 @Component
 public class PaymentStateMachine {
@@ -61,7 +62,9 @@ public class PaymentStateMachine {
         table.put(SENT_TO_CLEARING, EnumSet.of(CLEARED, FAILED, UNKNOWN));
         table.put(UNKNOWN, EnumSet.of(CLEARED, FAILED, MANUAL_REVIEW));
         table.put(MANUAL_REVIEW, EnumSet.of(CLEARED, FAILED));
-        table.put(CLEARED, EnumSet.of(SETTLED));
+        // CLEARED 에서 나가는 길은 둘뿐이다: 정상 마감(SETTLED), 그리고 사람의 확인(MANUAL_REVIEW).
+        // 후자는 늦게 도착한 모순된 응답 때문이다 — 자동으로 FAILED 로 덮어쓰지 않고 운영자에게 넘긴다(docs §7.4).
+        table.put(CLEARED, EnumSet.of(SETTLED, MANUAL_REVIEW));
         table.put(REJECTED, EnumSet.noneOf(PaymentStatus.class));
         table.put(FAILED, EnumSet.noneOf(PaymentStatus.class));
         table.put(SETTLED, EnumSet.noneOf(PaymentStatus.class));

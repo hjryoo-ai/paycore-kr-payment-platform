@@ -55,7 +55,8 @@ class PaymentStateMachineTest {
             case SENT_TO_CLEARING -> EnumSet.of(PaymentStatus.CLEARED, PaymentStatus.FAILED, PaymentStatus.UNKNOWN);
             case UNKNOWN -> EnumSet.of(PaymentStatus.CLEARED, PaymentStatus.FAILED, PaymentStatus.MANUAL_REVIEW);
             case MANUAL_REVIEW -> EnumSet.of(PaymentStatus.CLEARED, PaymentStatus.FAILED);
-            case CLEARED -> EnumSet.of(PaymentStatus.SETTLED);
+            // 모순된 늦은 응답은 상태를 뒤집지 않고 사람에게 넘긴다 (docs §7.4)
+            case CLEARED -> EnumSet.of(PaymentStatus.SETTLED, PaymentStatus.MANUAL_REVIEW);
             case REJECTED, FAILED, SETTLED -> EnumSet.noneOf(PaymentStatus.class);
         };
     }

@@ -18,13 +18,19 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jms.core.JmsTemplate;
+import org.springframework.test.context.TestPropertySource;
 
 /**
- * 시나리오 #4 와 §7.4 — 중복·모순·정체불명 응답에 대한 방어.
+ * 시나리오 #4 와 §7.4 — 중복 · 모순 · 정체불명 응답에 대한 방어.
  *
  * <p>at-least-once 메시징에서 같은 메시지를 두 번 받는 것은 장애가 아니라 정상이다. 정상인 일에
  * 시스템이 두 번 반응하면 그게 장애다.
+ *
+ * <p>watchdog 을 꺼 두는 이유: 이 클래스가 보려는 것은 "응답을 어떻게 해석하는가"이지 timeout 처리가
+ * 아니다. watchdog 이 돌면 응답을 판정하기도 전에 상태가 UNKNOWN → CLEARED 로 흘러가 버려서,
+ * 단정이 느슨해지거나(그래서 버그를 놓치거나) 시간 경합으로 깨진다.
  */
+@TestPropertySource(properties = "paycore.gateway.watchdog-enabled=false")
 class ClearingIdempotencyIT extends AbstractGatewayIT {
 
     @Autowired
@@ -40,30 +46,33 @@ class ClearingIdempotencyIT extends AbstractGatewayIT {
         Payment payment = givenValidatedPayment(1_200_000L);
 
         awaitCondition().until(() -> statusOf(payment.paymentId()) == PaymentStatus.CLEARED);
-        // 두 번째 응답이 도착해 dedup 될 시간을 준 뒤에 단정한다.
-        awaitCondition().until(() -> processedMessageCount() >= 2);
 
+        // 중복이 '실제로 도착했음'을 증명해야 한다. 시뮬레이터는 두 번째 사본을 첫 번째 직후에
+        // 같은 큐로 보내므로, 그 뒤에 우리가 넣은 표식 메시지가 처리됐다면 중복은 이미 지나간 뒤다
+        // (응답 큐는 FIFO, 리스너 동시성 1). 표식 없이 단정하면 중복이 오기도 전에 통과해 버린다.
+        String originalMsgId = sentPacs008MsgId(payment.paymentId());
+        injectResponse(sentinelAck(payment.endToEndId(), originalMsgId));
+        awaitCondition().until(() -> receivedPacs002Count(payment.paymentId()) == 2);
+
+        // 중복 사본은 msgId 가 같아 inbox 에서 걸린다 — 원문 로그도, inbox 행도 늘지 않는다.
+        assertThat(processedMessageCount())
+                .as("Kafka 이벤트 1 + pacs.002 원본 1 + 표식 1. 중복이 처리됐다면 4가 된다")
+                .isEqualTo(3);
         assertThat(historyOf(payment.paymentId()))
                 .extracting(h -> h.toStatus().name())
                 .containsExactly("RECEIVED", "VALIDATED", "SENT_TO_CLEARING", "CLEARED");
         assertThat(outboxOf(payment.paymentId(), PaymentEventType.PAYMENT_CLEARED))
                 .hasSize(1);
-        // 두 번째 pacs.002 는 inbox 에서 걸려 원문 로그도 1건만 남는다.
-        assertThat(receivedPacs002Count(payment.paymentId())).isEqualTo(1);
         assertThat(SimulatorProcess.transfers().size()).isEqualTo(1);
     }
 
     @Test
-    @DisplayName("확정된 CLEARED 를 늦게 온 RJCT 가 덮어쓰지 않는다 — 모순은 기록만 하고 사람을 부른다")
-    void doesNotOverwriteFinalStateWithContradictingResponse() {
+    @DisplayName("확정된 CLEARED 를 늦게 온 RJCT 가 덮어쓰지 않는다 — MANUAL_REVIEW 로 올리고 알린다")
+    void escalatesContradictingResponseInsteadOfOverwriting() {
         Payment payment = givenValidatedPayment(1_800_000L);
         awaitCondition().until(() -> statusOf(payment.paymentId()) == PaymentStatus.CLEARED);
 
-        String originalMsgId = clearingLogOf(payment.paymentId()).stream()
-                .filter(l -> ClearingMsgType.PACS_008.equals(l.msgType()))
-                .findFirst()
-                .orElseThrow()
-                .msgId();
+        String originalMsgId = sentPacs008MsgId(payment.paymentId());
 
         // 같은 이체에 대해 뒤늦게 '거절'이 도착한다. 새 msgId 라 inbox 는 통과한다.
         injectResponse(new Pacs002(
@@ -77,14 +86,23 @@ class ClearingIdempotencyIT extends AbstractGatewayIT {
                         StsRsn.AM04,
                         "늦게 도착한 모순 응답")));
 
-        awaitCondition().until(() -> receivedPacs002Count(payment.paymentId()) == 2);
+        awaitCondition().until(() -> statusOf(payment.paymentId()) == PaymentStatus.MANUAL_REVIEW);
 
-        assertThat(statusOf(payment.paymentId())).isEqualTo(PaymentStatus.CLEARED);
+        // 상태를 FAILED 로 뒤집지 않았다 — 이미 나간 돈을 실패로 적는 일은 없다.
         assertThat(historyOf(payment.paymentId()))
                 .extracting(h -> h.toStatus().name())
-                .containsExactly("RECEIVED", "VALIDATED", "SENT_TO_CLEARING", "CLEARED");
+                .containsExactly("RECEIVED", "VALIDATED", "SENT_TO_CLEARING", "CLEARED", "MANUAL_REVIEW");
         assertThat(outboxOf(payment.paymentId(), PaymentEventType.PAYMENT_FAILED))
                 .isEmpty();
+
+        // 그리고 조용히 넘어가지 않는다 — 운영자가 볼 사실이 이벤트로 남는다.
+        assertThat(outboxOf(payment.paymentId(), PaymentEventType.CLEARING_CONTRADICTION))
+                .singleElement()
+                .satisfies(e -> {
+                    assertThat(e.payload()).contains("\"currentStatus\":\"CLEARED\"");
+                    assertThat(e.payload()).contains("\"respondedStatus\":\"FAILED\"");
+                    assertThat(e.payload()).contains("\"escalated\":true");
+                });
     }
 
     @Test
@@ -94,7 +112,7 @@ class ClearingIdempotencyIT extends AbstractGatewayIT {
         Payment payment = givenValidatedPayment(1_300_000L);
 
         awaitCondition().until(() -> sentPacs008Count(payment.paymentId()) == 1);
-        String originalMsgId = clearingLogOf(payment.paymentId()).getFirst().msgId();
+        String originalMsgId = sentPacs008MsgId(payment.paymentId());
 
         injectResponse(new Pacs002(
                 new Pacs002.GrpHdr(ids.newClearingMsgId(), Instant.now()),
@@ -107,12 +125,17 @@ class ClearingIdempotencyIT extends AbstractGatewayIT {
                         null,
                         "처리 중")));
 
-        awaitCondition().until(() -> receivedPacs002Count(payment.paymentId()) >= 1);
+        awaitCondition().until(() -> receivedPacs002Count(payment.paymentId()) == 1);
 
-        // 상태는 SENT_TO_CLEARING 이거나 (timeout 이 먼저 돌았다면) UNKNOWN 이다. 어느 쪽도 확정이 아니다.
-        assertThat(statusOf(payment.paymentId()))
-                .isIn(PaymentStatus.SENT_TO_CLEARING, PaymentStatus.UNKNOWN, PaymentStatus.CLEARED);
-        assertThat(historyOf(payment.paymentId())).noneMatch(h -> h.toStatus() == PaymentStatus.FAILED);
+        // watchdog 이 꺼져 있으므로 상태를 움직일 수 있는 것은 이 응답뿐이다. 움직였다면 버그다.
+        assertThat(statusOf(payment.paymentId())).isEqualTo(PaymentStatus.SENT_TO_CLEARING);
+        assertThat(historyOf(payment.paymentId()))
+                .extracting(h -> h.toStatus().name())
+                .containsExactly("RECEIVED", "VALIDATED", "SENT_TO_CLEARING");
+        assertThat(outboxOf(payment.paymentId(), PaymentEventType.PAYMENT_CLEARED))
+                .isEmpty();
+        assertThat(outboxOf(payment.paymentId(), PaymentEventType.PAYMENT_FAILED))
+                .isEmpty();
     }
 
     @Test
@@ -121,6 +144,7 @@ class ClearingIdempotencyIT extends AbstractGatewayIT {
         SimulatorProcess.mode(SimulatorMode.PROCESS_BUT_NO_RESPONSE);
         Payment payment = givenValidatedPayment(1_400_000L);
         awaitCondition().until(() -> sentPacs008Count(payment.paymentId()) == 1);
+        String originalMsgId = sentPacs008MsgId(payment.paymentId());
 
         injectResponse(new Pacs002(
                 new Pacs002.GrpHdr(ids.newClearingMsgId(), Instant.now()),
@@ -132,11 +156,58 @@ class ClearingIdempotencyIT extends AbstractGatewayIT {
                         TxSts.RJCT,
                         StsRsn.AM04,
                         "위조된 응답")));
+        // 위조 응답 뒤에 정상 응답을 넣는다. 뒤엣것이 처리됐다면 앞엣것도 이미 지나간 뒤다.
+        injectResponse(sentinelAck(payment.endToEndId(), originalMsgId));
 
-        // 위조 응답은 inbox 에는 기록되지만 상태에는 닿지 못한다.
-        awaitCondition().until(() -> processedMessageCount() >= 1);
-        assertThat(receivedPacs002Count(payment.paymentId())).isZero();
-        assertThat(historyOf(payment.paymentId())).noneMatch(h -> h.toStatus() == PaymentStatus.FAILED);
+        awaitCondition().until(() -> statusOf(payment.paymentId()) == PaymentStatus.CLEARED);
+
+        // 위조 응답은 inbox 에는 남지만 상태에도, 원문 로그에도 닿지 못했다.
+        assertThat(receivedPacs002Count(payment.paymentId()))
+                .as("정상 응답 1건만 기록된다")
+                .isEqualTo(1);
+        assertThat(historyOf(payment.paymentId()))
+                .extracting(h -> h.toStatus().name())
+                .containsExactly("RECEIVED", "VALIDATED", "SENT_TO_CLEARING", "CLEARED");
+        assertThat(outboxOf(payment.paymentId(), PaymentEventType.PAYMENT_FAILED))
+                .isEmpty();
+    }
+
+    @Test
+    @DisplayName("다른 결제의 msgId 를 실은 응답도 무시한다 — endToEndId 만 맞으면 되는 게 아니다")
+    void ignoresResponseCorrelatedToAnotherPayment() {
+        SimulatorProcess.mode(SimulatorMode.PROCESS_BUT_NO_RESPONSE);
+        Payment victim = givenValidatedPayment(1_500_000L);
+        Payment other = givenValidatedPayment(1_600_000L);
+        awaitCondition()
+                .until(() -> sentPacs008Count(victim.paymentId()) == 1 && sentPacs008Count(other.paymentId()) == 1);
+
+        String othersMsgId = sentPacs008MsgId(other.paymentId());
+
+        // 피해자의 endToEndId + 다른 결제의 msgId 조합. 존재 확인만 하면 통과해 버린다.
+        injectResponse(new Pacs002(
+                new Pacs002.GrpHdr(ids.newClearingMsgId(), Instant.now()),
+                new Pacs002.TxInfAndSts(
+                        othersMsgId,
+                        ClearingMsgType.PACS_008,
+                        victim.endToEndId(),
+                        othersMsgId,
+                        TxSts.ACSC,
+                        null,
+                        "짝이 맞지 않는 응답")));
+        injectResponse(sentinelAck(other.endToEndId(), othersMsgId));
+
+        awaitCondition().until(() -> statusOf(other.paymentId()) == PaymentStatus.CLEARED);
+
+        assertThat(statusOf(victim.paymentId())).as("피해자는 응답을 받은 적이 없다").isEqualTo(PaymentStatus.SENT_TO_CLEARING);
+        assertThat(receivedPacs002Count(victim.paymentId())).isZero();
+    }
+
+    /** 정상적인 ACSC 응답. 큐가 어디까지 처리됐는지 재는 표식으로 쓴다. */
+    private Pacs002 sentinelAck(String endToEndId, String orgnlMsgId) {
+        return new Pacs002(
+                new Pacs002.GrpHdr(ids.newClearingMsgId(), Instant.now()),
+                new Pacs002.TxInfAndSts(
+                        orgnlMsgId, ClearingMsgType.PACS_008, endToEndId, orgnlMsgId, TxSts.ACSC, null, "표식"));
     }
 
     private void injectResponse(Pacs002 response) {

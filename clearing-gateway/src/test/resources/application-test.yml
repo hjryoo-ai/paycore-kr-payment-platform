@@ -11,6 +11,12 @@ spring:
     consumer:
       group-id: clearing-gateway-it
       auto-offset-reset: earliest
+  jms:
+    listener:
+      # 응답 큐를 한 스레드로만 소비한다. 테스트가 '앞선 메시지가 먼저 처리된다'는 FIFO 성질에
+      # 기대어 중복 응답이 실제로 도착했음을 증명하기 때문이다.
+      concurrency: 1
+      max-concurrency: 1
 
 paycore:
   core:

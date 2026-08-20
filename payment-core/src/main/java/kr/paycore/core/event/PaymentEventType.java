@@ -11,6 +11,8 @@ public final class PaymentEventType {
     public static final String PAYMENT_UNKNOWN = "PaymentUnknown";
     public static final String PAYMENT_SETTLED = "PaymentSettled";
     public static final String PAYMENT_MANUAL_REVIEW = "PaymentManualReview";
+    /** 청산 응답이 확정된 상태와 모순된다 (docs §7.4). 상태를 덮어쓰지 않고 사실만 알린다. */
+    public static final String CLEARING_CONTRADICTION = "ClearingContradictionDetected";
 
     private PaymentEventType() {}
 }
