@@ -104,7 +104,7 @@ Artemis 콘솔 <http://localhost:8161> (`paycore/paycore`) · Kafka 호스트 �
 | 4 | 복식부기 원장 | ✅ |
 | 5 | EOD 3-way 대사 | ✅ |
 | 6 | DLQ + 운영 repair | ✅ |
-| 7 | CI/CD + 관측성 | ⬜ |
+| 7 | CI/CD + 관측성 | ✅ |
 | 8 | React 운영 대시보드 | ⬜ |
 | 9 | 데모 스크립트 + 문서 마감 | ⬜ |
 
@@ -279,7 +279,87 @@ DLT 토픽(`payment.events.DLT`)은 명시 선언한다. 실패 레코드를 원
 **시나리오 #7**: 깨진 payload 주입 → 재시도 없이 DLT → 같은 파티션의 뒤이은 결제는 정상 처리
 (`PoisonMessageDltIT`, `scripts/chaos/scenario-07-poison-message.sh`).
 
-## API (Phase 1~6 구현분)
+## 관측성 (Phase 7)
+
+### 결제 1건의 전 구간 로그를 한 번에 찾는다
+
+로그는 여러 프로세스·여러 스레드·여러 시각에 흩어진다. 접수는 payment-api 가, 송신은
+clearing-gateway 스케줄러가, 기표는 ledger-service 소비자가 남긴다. 그걸 시간순으로 꿰려면
+모든 줄에 같은 키가 있어야 한다 — [`PaymentMdc`](payment-core/src/main/java/kr/paycore/core/observability/PaymentMdc.java)
+가 `endToEndId` 와 `paymentId` 를 MDC 에 넣는다.
+
+`endToEndId` 를 키로 고른 이유: 청산망 메시지에도 실려 나가므로 **우리 로그와 상대 로그를 잇는
+유일한 지점**이다.
+
+MDC 는 try-with-resources 로만 연다. 풀에서 재사용되는 스레드에 남기면 다음 결제의 로그에 엉뚱한
+`endToEndId` 가 붙는데, 사고 조사에서 없는 로그보다 **틀린 로그**가 훨씬 오래 사람을 붙든다
+(`PaymentMdcTest` 가 누수·중첩·예외 경로를 모두 고정한다).
+
+로그는 Boot 4 내장 구조화 로깅으로 ECS JSON 이다. `PAYCORE_LOG_FORMAT=` 로 비우면 평문으로 돌아간다.
+
+```bash
+docker compose logs payment-api clearing-gateway ledger-service --no-color \
+  | grep '"endToEndId":"PC01M0F...' | jq -r '.["@timestamp"] + " " + .message'
+```
+
+### 지표는 알림 규칙과 짝을 이룬다
+
+아무도 보지 않을 지표는 넣지 않았다. 각 지표에는 대응하는 알림이 있고, 각 알림에는 **지금 무엇을
+하라는 것인지**가 적혀 있다.
+
+| 지표 | 알림 조건 | 사람이 할 일 |
+|---|---|---|
+| `paycore_payment_unknown_age_seconds` | > 5분 | pacs.028 조회 이력 확인 → 워크리스트에서 repair. **재송신 금지** |
+| `paycore_payment_count{status="MANUAL_REVIEW"}` | > 0 (5분) | `/api/v1/ops/worklist` 에서 근거와 함께 repair |
+| `paycore_outbox_lag_seconds` | > 60초 | poller/Kafka 발행 실패 확인. 이벤트는 유실되지 않는다 |
+| `paycore_deadletter_open` | > 0 | `/api/v1/ops/dead-letters` 에서 원인 확인 후 republish |
+| `paycore_recon_break_open` | > 0 | 대사 리포트의 조사 순서를 따른다 |
+| `absent(paycore_recon_break_open)` | 10분 | **불일치 0건과 '마감이 안 돌았음'은 다르다** |
+
+측정 방식에도 이유가 있다. UNKNOWN 체류는 평균이 아니라 **최댓값**이다 — 방치된 한 건이 문제이지
+전체 평균이 문제인 적은 없고, 평균은 한 건이 며칠 묵어도 조용하다. outbox 는 건수가 아니라
+**나이**를 본다 — 100건이 방금 쌓인 것과 1건이 30분째 못 나가는 것은 완전히 다른 사고다.
+
+게이지는 스크레이프마다 DB 를 때리지 않고 주기 조회 결과를 담아 둔다. 관측이 부하가 되면
+부하가 심할 때 관측이 먼저 끊긴다.
+
+Grafana 대시보드 1장이 파일로 프로비저닝된다
+([`docker/grafana/dashboards`](docker/grafana/dashboards)) — 손으로 import 하면 그 사람 노트북에만 남는다.
+
+```bash
+docker compose --profile obs up -d     # Prometheus :9090 · Grafana :3000 (admin/admin)
+```
+
+## CI/CD (Phase 7)
+
+[`Jenkinsfile`](Jenkinsfile) 과 [`.github/workflows/ci.yml`](.github/workflows/ci.yml) 이 **같은 단계**를
+돈다. 순서 원칙은 하나다 — **싼 검증을 먼저**. 포맷 위반 하나 때문에 Oracle 컨테이너를 띄우는
+통합 테스트를 20분 돌리고 나서 실패하는 것은 낭비다.
+
+```
+빌드 → 포맷 → 단위 테스트 → 통합 테스트(Testcontainers) → 의존성/시크릿 스캔 → 이미지 → 스택 기동 + 스모크
+```
+
+스모크([`scripts/smoke-test.sh`](scripts/smoke-test.sh))는 "떴는가"가 아니라 **돈이 끝까지 흘렀는가**를
+본다: 접수 → 청산 → 원장 → 대사 불일치 0건. 헬스체크만 보는 스모크는 파이프라인이 깨진 채로도
+초록불이 켜진다.
+
+## 보안 체크리스트 (docs §10.2)
+
+| 영역 | 무엇을 하는가 | 어디에 |
+|---|---|---|
+| 입력 | Bean Validation + 화이트리스트(은행코드·통화·계좌 자릿수), 적요 제어문자 차단(로그 인젝션) | [`PaymentIntakeRequest`](payment-api/src/main/java/kr/paycore/api/payment/PaymentIntakeRequest.java) |
+| 오류 응답 | RFC 9457 problem+json, 스택트레이스·SQL·내부 클래스명 비노출 | [`GlobalExceptionHandler`](payment-api/src/main/java/kr/paycore/api/error/GlobalExceptionHandler.java) |
+| 데이터 | 계좌번호는 로그·API 응답·대사 리포트 어디서도 원문 노출 없음 | [`AccountMasker`](common/src/main/java/kr/paycore/common/mask/AccountMasker.java) |
+| 메시지 계약 | JSON Schema 검증을 **송신 시에도** 수행 | [`ClearingMessageCodec`](common/src/main/java/kr/paycore/common/clearing/ClearingMessageCodec.java) |
+| 시크릿 | 환경변수/compose 로만 주입, gitleaks pre-commit + CI 이중 게이트 | [`.gitleaks.toml`](.gitleaks.toml), [`.pre-commit-config.yaml`](.pre-commit-config.yaml) |
+| 의존성 | OWASP Dependency-Check, **CVSS 7 이상이면 빌드 실패** | [`build.gradle.kts`](build.gradle.kts) |
+| 감사 | 운영자 행위는 who/when/why 가 상태 변경과 **같은 커밋**에 기록 | [`OperationAudit`](payment-core/src/main/java/kr/paycore/core/ops/OperationAudit.java) |
+
+**실운영이라면 추가할 것**: mTLS · HSM 기반 메시지 서명 · 망분리 · 4-eyes 승인 ·
+운영 API SSO/RBAC · 개인정보 암호화(TDE 또는 컬럼 암호화) · 키 로테이션 · WORM 감사 저장소.
+
+## API (Phase 1~7 구현분)
 
 | 메서드 | 경로 | 설명 |
 |---|---|---|
