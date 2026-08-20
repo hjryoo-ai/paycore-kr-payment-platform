@@ -1,0 +1,22 @@
+# 시크릿 스캔 설정 (docs §10.2 — "시크릿은 환경변수/compose secrets, 커밋 금지").
+[extend]
+useDefault = true
+
+# 로컬 개발용 자격증명만 허용한다. paycore/paycore, admin/admin 은 compose 안에서만 쓰이고
+# 어떤 실제 시스템에도 접근하지 못한다. 이걸 막아 두면 스캐너가 매번 울려서
+# 정작 진짜 시크릿이 묻힌다 — 노이즈가 많은 보안 도구는 꺼진 보안 도구와 같다.
+[allowlist]
+description = "로컬 전용 compose 자격증명"
+regexTarget = "match"
+regexes = [
+  '''paycore:paycore''',
+  '''(?i)(ORACLE_PASSWORD|APP_USER_PASSWORD|ARTEMIS_PASSWORD|MQ_APP_PASSWORD|MQ_ADMIN_PASSWORD|GF_SECURITY_ADMIN_PASSWORD):\s*\S+''',
+  '''(?i)PAYCORE_(DB|JMS)_PASSWORD:\s*\S+''',
+  '''(?i)password:\s*\$\{PAYCORE_[A-Z_]+:paycore\}''',
+]
+paths = [
+  '''docker-compose\.yml''',
+  '''.*/src/(main|test)/resources/application.*\.ya?ml''',
+  '''README\.md''',
+  '''scripts/.*''',
+]
