@@ -29,9 +29,10 @@
     },
     "account": {
       "type": "string",
-      "minLength": 6,
+      "minLength": 10,
       "maxLength": 32,
-      "pattern": "^[0-9-]+$"
+      "pattern": "^[0-9-]+$",
+      "description": "구분자 포함 계좌번호. minLength 는 payment-api 의 최소 자릿수(BankAccountValidator.MIN_DIGITS)와 짝을 이룬다 — 접수는 되는데 송신이 안 되는 결제를 만들지 않기 위해서다."
     },
     "amount": {
       "type": "object",

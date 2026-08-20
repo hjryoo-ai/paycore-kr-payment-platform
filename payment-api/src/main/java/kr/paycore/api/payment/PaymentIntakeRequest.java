@@ -5,6 +5,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
+import kr.paycore.api.validation.BankAccount;
 import kr.paycore.api.validation.BankCode;
 import kr.paycore.api.validation.MaxTransferAmount;
 import kr.paycore.api.validation.SupportedCurrency;
@@ -16,10 +17,10 @@ import kr.paycore.api.validation.SupportedCurrency;
  * 허용하며, 그 밖의 문자는 거부한다 — 로그 인젝션과 downstream 전문 오염을 입구에서 막는다.
  */
 public record PaymentIntakeRequest(
-        @NotBlank @Size(max = 32) @Pattern(regexp = ACCOUNT_PATTERN, message = "계좌번호 형식이 올바르지 않습니다.")
+        @NotBlank @Size(max = 32) @Pattern(regexp = ACCOUNT_PATTERN, message = "계좌번호 형식이 올바르지 않습니다.") @BankAccount
         String debtorAccount,
 
-        @NotBlank @Size(max = 32) @Pattern(regexp = ACCOUNT_PATTERN, message = "계좌번호 형식이 올바르지 않습니다.")
+        @NotBlank @Size(max = 32) @Pattern(regexp = ACCOUNT_PATTERN, message = "계좌번호 형식이 올바르지 않습니다.") @BankAccount
         String creditorAccount,
 
         @NotBlank @Pattern(regexp = "^[0-9]{3}$", message = "은행코드는 숫자 3자리입니다.") @BankCode
