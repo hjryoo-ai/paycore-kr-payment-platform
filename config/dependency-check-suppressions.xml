@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<suppressions xmlns="https://jeremylong.github.io/DependencyCheck/dependency-suppression.1.3.xsd">
+    <!-- 억제 항목은 반드시 사유와 재검토 일자를 남긴다. 비어 있는 것이 기본 상태. -->
+</suppressions>

@@ -1,0 +1,254 @@
+# PayCore-KR 로컬 전체 스택 (docs/payment-platform-design.md §3.1)
+#
+#   기본        : docker compose up -d                 (인프라 + 애플리케이션 5종)
+#   인프라만    : docker compose up -d oracle kafka artemis
+#   IBM MQ 추가 : docker compose --profile ibmmq up -d  (amd64 에뮬레이션 — ADR-0002)
+#   관측성 추가 : docker compose --profile obs up -d
+#
+# 애플리케이션 이미지는 `./gradlew bootJar` 후 `docker compose build` 로 만들어진다.
+
+name: paycore-kr
+
+x-app-common: &app-common
+  restart: unless-stopped
+  networks: [paycore]
+  environment: &app-env
+    PAYCORE_DB_URL: jdbc:oracle:thin:@//oracle:1521/FREEPDB1
+    PAYCORE_DB_USER: paycore
+    PAYCORE_DB_PASSWORD: paycore
+    PAYCORE_KAFKA: kafka:9092
+    PAYCORE_JMS_URL: tcp://artemis:61616
+    PAYCORE_JMS_USER: paycore
+    PAYCORE_JMS_PASSWORD: paycore
+    TZ: Asia/Seoul
+
+services:
+  # ────────────────────────────── 인프라 ──────────────────────────────
+  oracle:
+    image: gvenzl/oracle-free:23-slim-faststart
+    container_name: paycore-oracle
+    networks: [paycore]
+    ports: ["1521:1521"]
+    environment:
+      ORACLE_PASSWORD: oracle
+      APP_USER: paycore
+      APP_USER_PASSWORD: paycore
+      TZ: Asia/Seoul
+    volumes:
+      - oracle-data:/opt/oracle/oradata
+    healthcheck:
+      test: ["CMD", "healthcheck.sh"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 60s
+
+  kafka:
+    image: apache/kafka:4.3.1
+    container_name: paycore-kafka
+    networks: [paycore]
+    ports: ["29092:29092"]
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,PLAINTEXT_HOST://:29092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_NUM_PARTITIONS: 3
+      CLUSTER_ID: paycore-kr-local-cluster
+      TZ: Asia/Seoul
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+      start_period: 20s
+
+  # 외부 청산망 JMS 브로커 (기본). IBM MQ 대체 근거는 docs/adr/0002 참고.
+  artemis:
+    image: apache/activemq-artemis:2.44.0
+    container_name: paycore-artemis
+    networks: [paycore]
+    ports: ["61616:61616", "8161:8161"]
+    environment:
+      ARTEMIS_USER: paycore
+      ARTEMIS_PASSWORD: paycore
+      ANONYMOUS_LOGIN: "false"
+      EXTRA_ARGS: "--no-autotune --relax-jolokia --http-host 0.0.0.0 --host 0.0.0.0"
+      TZ: Asia/Seoul
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 3 bash -c '</dev/tcp/localhost/61616' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+
+  # 선택: 실제 IBM MQ. arm64 미지원이라 에뮬레이션으로 동작한다(느림).
+  ibmmq:
+    image: icr.io/ibm-messaging/mq:latest
+    container_name: paycore-ibmmq
+    profiles: ["ibmmq"]
+    platform: linux/amd64
+    networks: [paycore]
+    ports: ["1414:1414", "9443:9443"]
+    environment:
+      LICENSE: accept
+      MQ_QMGR_NAME: PAYCORE
+      MQ_APP_PASSWORD: paycore
+      MQ_ADMIN_PASSWORD: paycoreAdmin1
+      TZ: Asia/Seoul
+    healthcheck:
+      test: ["CMD-SHELL", "chkmqhealthy"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 60s
+
+  # ────────────────────────────── 애플리케이션 ──────────────────────────────
+  payment-api:
+    <<: *app-common
+    build: ./payment-api
+    image: paycore/payment-api:local
+    container_name: paycore-payment-api
+    ports: ["8081:8081"]
+    depends_on:
+      oracle: {condition: service_healthy}
+      kafka:  {condition: service_healthy}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8081/actuator/health | grep -q '\"status\":\"UP\"'"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 40s
+
+  clearing-gateway:
+    <<: *app-common
+    build: ./clearing-gateway
+    image: paycore/clearing-gateway:local
+    container_name: paycore-clearing-gateway
+    ports: ["8082:8082"]
+    depends_on:
+      artemis: {condition: service_healthy}
+      # payment.events 를 소비해 pacs.008 을 만든다 (ADR-0008)
+      kafka:   {condition: service_healthy}
+      # payment-api 가 Flyway 로 스키마를 만든 뒤 기동한다 (ADR-0004)
+      payment-api: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8082/actuator/health | grep -q '\"status\":\"UP\"'"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 40s
+
+  clearing-simulator:
+    <<: *app-common
+    build: ./clearing-simulator
+    image: paycore/clearing-simulator:local
+    container_name: paycore-clearing-simulator
+    ports: ["8083:8083"]
+    environment:
+      <<: *app-env
+      PAYCORE_EOD_DIR: /app/data/eod
+    volumes:
+      - eod-data:/app/data/eod
+    depends_on:
+      artemis: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8083/actuator/health | grep -q '\"status\":\"UP\"'"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 40s
+
+  ledger-service:
+    <<: *app-common
+    build: ./ledger-service
+    image: paycore/ledger-service:local
+    container_name: paycore-ledger-service
+    ports: ["8084:8084"]
+    depends_on:
+      kafka: {condition: service_healthy}
+      payment-api: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8084/actuator/health | grep -q '\"status\":\"UP\"'"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 40s
+
+  recon-batch:
+    <<: *app-common
+    build: ./recon-batch
+    image: paycore/recon-batch:local
+    container_name: paycore-recon-batch
+    ports: ["8085:8085"]
+    environment:
+      <<: *app-env
+      PAYCORE_EOD_DIR: /app/data/eod
+      PAYCORE_REPORT_DIR: /app/data/recon
+    volumes:
+      - eod-data:/app/data/eod
+      - recon-data:/app/data/recon
+    depends_on:
+      payment-api: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8085/actuator/health | grep -q '\"status\":\"UP\"'"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 40s
+
+  # ────────────────────────────── 관측성 (profile: obs) ──────────────────────────────
+  prometheus:
+    image: prom/prometheus:v3.14.0
+    container_name: paycore-prometheus
+    profiles: ["obs"]
+    networks: [paycore]
+    ports: ["9090:9090"]
+    volumes:
+      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9090/-/healthy >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  grafana:
+    image: grafana/grafana:13.1.4
+    container_name: paycore-grafana
+    profiles: ["obs"]
+    networks: [paycore]
+    ports: ["3000:3000"]
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./docker/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana-data:/var/lib/grafana
+    depends_on: [prometheus]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+networks:
+  paycore:
+    driver: bridge
+
+volumes:
+  oracle-data:
+  kafka-data:
+  grafana-data:
+  eod-data:
+  recon-data:

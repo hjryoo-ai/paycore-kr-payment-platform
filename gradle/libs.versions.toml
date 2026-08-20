@@ -1,0 +1,68 @@
+# 버전 단일 관리 지점 (docs/payment-platform-design.md §2)
+# 추측 금지 원칙: 아래 버전은 2026-08-19 Maven Central / Gradle Plugin Portal에서 실제 조회하여 고정한 값이다.
+[versions]
+java                = "21"
+springBoot          = "4.1.0"     # 최신 stable (3.5 라인은 OSS EOL)
+foojayResolver      = "1.0.0"
+spotless            = "8.10.0"
+dependencyCheck     = "10.0.3"
+ulid                = "5.2.4"
+jsonSchemaValidator = "3.0.6"
+ibmMqClient         = "9.4.5.1"   # ibmmq 프로파일 전용 (기본 브로커는 Artemis — docs/adr/0002)
+# 아래는 Spring Boot 4.1.0 BOM이 관리하는 버전(참고용, 직접 지정하지 않음):
+#   testcontainers 2.0.5 / flyway 12.4.0 / oracle-database 23.26.2.0.0
+#   kafka-clients 4.2.1 / spring-kafka 4.1.0 / artemis 2.53.0
+#   junit-jupiter 6.0.3 / assertj 3.27.7 / mockito 5.23.0 / awaitility 4.3.0
+
+[libraries]
+# --- platforms (BOM) ---
+springBoot-bom       = { module = "org.springframework.boot:spring-boot-dependencies", version.ref = "springBoot" }
+
+# --- spring boot starters (버전은 BOM이 관리) ---
+spring-boot-starter            = { module = "org.springframework.boot:spring-boot-starter" }
+spring-boot-starter-web        = { module = "org.springframework.boot:spring-boot-starter-web" }
+spring-boot-starter-actuator   = { module = "org.springframework.boot:spring-boot-starter-actuator" }
+spring-boot-starter-validation = { module = "org.springframework.boot:spring-boot-starter-validation" }
+spring-boot-starter-data-jpa   = { module = "org.springframework.boot:spring-boot-starter-data-jpa" }
+spring-boot-starter-jdbc       = { module = "org.springframework.boot:spring-boot-starter-jdbc" }
+spring-boot-starter-artemis    = { module = "org.springframework.boot:spring-boot-starter-artemis" }
+spring-boot-starter-test       = { module = "org.springframework.boot:spring-boot-starter-test" }
+spring-boot-testcontainers     = { module = "org.springframework.boot:spring-boot-testcontainers" }
+# Boot 4 에서 TestRestTemplate 은 spring-boot-starter-test 에 포함되지 않고 별도 모듈이다.
+spring-boot-resttestclient     = { module = "org.springframework.boot:spring-boot-resttestclient" }
+# TestRestTemplate 은 RestTemplateBuilder 를 필요로 하는데, Boot 4 에서는 이 역시 별도 모듈이다.
+spring-boot-restclient         = { module = "org.springframework.boot:spring-boot-restclient" }
+spring-boot-configuration-processor = { module = "org.springframework.boot:spring-boot-configuration-processor" }
+
+# Boot 4 의 자동설정 모듈들. 클라이언트 라이브러리(spring-kafka 등)만으로는 자동설정이 붙지 않는다.
+spring-boot-kafka  = { module = "org.springframework.boot:spring-boot-kafka" }
+spring-kafka       = { module = "org.springframework.kafka:spring-kafka" }
+spring-kafka-test  = { module = "org.springframework.kafka:spring-kafka-test" }
+
+# --- persistence ---
+# Boot 4 는 자동설정이 모듈로 분리되어 있다. flyway-core 만으로는 FlywayAutoConfiguration 이 붙지 않는다.
+spring-boot-flyway     = { module = "org.springframework.boot:spring-boot-flyway" }
+flyway-core            = { module = "org.flywaydb:flyway-core" }
+flyway-database-oracle = { module = "org.flywaydb:flyway-database-oracle" }
+oracle-jdbc            = { module = "com.oracle.database.jdbc:ojdbc11" }
+
+# --- observability ---
+micrometer-registry-prometheus = { module = "io.micrometer:micrometer-registry-prometheus" }
+
+# --- misc ---
+ulid-creator         = { module = "com.github.f4b6a3:ulid-creator", version.ref = "ulid" }
+json-schema-validator= { module = "com.networknt:json-schema-validator", version.ref = "jsonSchemaValidator" }
+ibm-mq-jakarta-client= { module = "com.ibm.mq:com.ibm.mq.jakarta.client", version.ref = "ibmMqClient" }
+
+# --- test ---
+testcontainers-junit-jupiter  = { module = "org.testcontainers:testcontainers-junit-jupiter" }
+testcontainers-oracle-free    = { module = "org.testcontainers:testcontainers-oracle-free" }
+testcontainers-kafka          = { module = "org.testcontainers:testcontainers-kafka" }
+testcontainers-activemq       = { module = "org.testcontainers:testcontainers-activemq" }
+awaitility                    = { module = "org.awaitility:awaitility" }
+
+[plugins]
+springBoot      = { id = "org.springframework.boot",       version.ref = "springBoot" }
+foojayResolver  = { id = "org.gradle.toolchains.foojay-resolver-convention", version.ref = "foojayResolver" }
+spotless        = { id = "com.diffplug.spotless",          version.ref = "spotless" }
+dependencyCheck = { id = "org.owasp.dependencycheck",      version.ref = "dependencyCheck" }

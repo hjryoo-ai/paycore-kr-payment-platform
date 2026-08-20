@@ -1,0 +1,6 @@
+**/build/tmp
+**/build/classes
+**/build/resources
+**/.gradle
+.git
+ops-dashboard/node_modules
