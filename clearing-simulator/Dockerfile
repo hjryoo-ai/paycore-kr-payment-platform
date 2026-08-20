@@ -8,7 +8,9 @@ RUN apk add --no-cache curl tzdata \
  && addgroup -S app && adduser -S app -G app
 
 WORKDIR /app
-COPY build/libs/*.jar /app/app.jar
+# 이름은 build.gradle.kts 에서 고정한다. glob 을 쓰면 -plain.jar 와 둘 다 매칭되어
+# 어느 쪽이 남는지가 파일명 정렬 순서에 달리게 된다.
+COPY build/libs/app.jar /app/app.jar
 RUN mkdir -p /app/data && chown -R app:app /app
 USER app
 

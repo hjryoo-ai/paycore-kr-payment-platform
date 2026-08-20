@@ -62,6 +62,20 @@ subprojects {
 }
 
 // OWASP Dependency-Check (docs §10.1 stage 4). CI에서 `gradle dependencyCheckAnalyze` 로만 실행.
+// Spring Boot 모듈의 실행 가능 jar 이름을 고정한다.
+//
+// 왜: Dockerfile 의 `COPY build/libs/*.jar` 는 build/libs 에 -plain.jar 와 boot jar 두 개가 있을 때
+// 두 파일 모두 같은 목적지에 쓰이고 '마지막에 복사된 것'이 남는다. 지금 동작하는 이유는 순전히
+// '-'(0x2D) 가 '.'(0x2E) 보다 먼저 정렬되어 boot jar 가 나중에 덮어쓰기 때문이고,
+// BuildKit 을 끄면 그대로 실패한다. 이름을 고정해 우연에 기대지 않는다.
+subprojects {
+    plugins.withId("org.springframework.boot") {
+        tasks.named<org.springframework.boot.gradle.tasks.bundling.BootJar>("bootJar") {
+            archiveFileName = "app.jar"
+        }
+    }
+}
+
 dependencyCheck {
     failBuildOnCVSS = 7.0f
     formats = listOf("HTML", "JSON")
