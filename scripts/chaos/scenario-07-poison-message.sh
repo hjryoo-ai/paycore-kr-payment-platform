@@ -16,11 +16,14 @@ BEFORE=$(submit_payment 1300000)
 wait_for_status "$BEFORE" SETTLED 120
 
 log "깨진 payload 를 payment.events 에 직접 주입한다"
-docker exec paycore-kafka /opt/kafka/bin/kafka-console-producer.sh \
-    --bootstrap-server localhost:9092 --topic payment.events \
-    --property "parse.headers=true" --property "headers.delimiter=\t" --property "headers.separator=," \
-    --property "parse.key=true" --property "key.separator=|" \
-    <<<'eventType:PaymentSettled,eventId:chaos-poison-1	01M0CHAOSPOISON000000000AA|{이건 JSON 이 아니다'
+# 형식은 "h1:v1,h2:v2\tkey\tvalue" 이고 구분자는 실제 탭이다.
+# heredoc 안의 \t 는 리터럴 백슬래시+t 라 파싱되지 않는다 — printf 로 진짜 탭을 넣는다.
+POISON_EVENT_ID="chaos-poison-$(date +%s)"
+printf 'eventType:PaymentSettled,eventId:%s\t%s\t{이건 JSON 이 아니다\n' \
+    "$POISON_EVENT_ID" "01M0CHAOSPOISON000000000AA" \
+  | docker exec -i paycore-kafka /opt/kafka/bin/kafka-console-producer.sh \
+        --bootstrap-server localhost:9092 --topic payment.events \
+        --property parse.headers=true --property parse.key=true 2>&1 | grep -v '^Warning' || true
 
 log "DLT 워크리스트 확인"
 DEADLINE=$(( $(date +%s) + 60 ))
@@ -28,8 +31,8 @@ while :; do
     FOUND=$(curl -fsS "$API/api/v1/ops/dead-letters?status=NEW" \
         | python3 -c 'import sys,json
 for d in json.load(sys.stdin):
-    if d.get("eventId") == "chaos-poison-1":
-        print("%s|%s|%s" % (d["deadLetterId"], d["exceptionType"], d["status"]))' || true)
+    if d.get("eventId") == sys.argv[1]:
+        print("%s|%s|%s" % (d["deadLetterId"], d["exceptionType"], d["status"]))' "$POISON_EVENT_ID" || true)
     [ -n "$FOUND" ] && break
     if [ "$(date +%s)" -ge "$DEADLINE" ]; then
         bad "60s 안에 DLT 워크리스트에 올라오지 않았다"
