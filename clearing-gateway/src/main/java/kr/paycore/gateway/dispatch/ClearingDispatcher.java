@@ -13,8 +13,11 @@ import kr.paycore.core.clearing.ClearingMessageLogRepository;
 import kr.paycore.core.domain.Payment;
 import kr.paycore.core.domain.PaymentRepository;
 import kr.paycore.core.domain.PaymentStatus;
+import kr.paycore.core.event.PaymentEventType;
+import kr.paycore.core.event.PaymentRejectedEvent;
 import kr.paycore.core.event.PaymentValidatedEvent;
 import kr.paycore.core.inbox.InboxGuard;
+import kr.paycore.core.outbox.OutboxWriter;
 import kr.paycore.core.statemachine.PaymentStateMachine;
 import kr.paycore.gateway.config.GatewayProperties;
 import org.slf4j.Logger;
@@ -36,11 +39,13 @@ import org.springframework.transaction.annotation.Transactional;
 public class ClearingDispatcher {
 
     private static final Logger log = LoggerFactory.getLogger(ClearingDispatcher.class);
+    private static final String TRIGGERED_BY_ENCODE = "gateway-encode";
 
     private final PaymentRepository payments;
     private final ClearingMessageLogRepository clearingLogs;
     private final PaymentStateMachine stateMachine;
     private final InboxGuard inbox;
+    private final OutboxWriter outbox;
     private final ClearingMessageCodec codec;
     private final GatewayProperties properties;
     private final Ids ids;
@@ -51,6 +56,7 @@ public class ClearingDispatcher {
             ClearingMessageLogRepository clearingLogs,
             PaymentStateMachine stateMachine,
             InboxGuard inbox,
+            OutboxWriter outbox,
             ClearingMessageCodec codec,
             GatewayProperties properties,
             Ids ids,
@@ -59,6 +65,7 @@ public class ClearingDispatcher {
         this.clearingLogs = clearingLogs;
         this.stateMachine = stateMachine;
         this.inbox = inbox;
+        this.outbox = outbox;
         this.codec = codec;
         this.properties = properties;
         this.ids = ids;
@@ -105,6 +112,34 @@ public class ClearingDispatcher {
                 clock.instant()));
 
         return Optional.of(new OutgoingMessage(msgId, ClearingMsgType.PACS_008, payment.endToEndId(), payload));
+    }
+
+    /**
+     * 보낼 수 없는 결제를 종결시킨다 (docs §7.5 — 영구 오류는 즉시 끝낸다).
+     *
+     * <p>필요한 이유: pacs.008 을 <b>규격에 맞게 만들 수 없는</b> 결제가 있을 수 있다. 그런 건은
+     * 재시도해도 결과가 같은데, 조용히 버리면 결제가 {@code VALIDATED} 로 영원히 남는다. 어떤 스케줄러도
+     * 그 상태를 보지 않으므로 고객은 끝나지 않는 처리중 화면을 보고, 차감된 일일 한도는 돌아오지 않는다.
+     *
+     * <p>돈은 나가지 않았으므로 {@code REJECTED} 로 확정하는 것이 안전하다 — 모르는 상태가 아니라
+     * 확실히 보내지 못한 상태다.
+     */
+    @Transactional
+    public boolean rejectUnsendable(String paymentId, String reason) {
+        Optional<Payment> found = payments.findByIdForUpdate(paymentId);
+        if (found.isEmpty() || found.get().status() != PaymentStatus.VALIDATED) {
+            return false;
+        }
+        Payment payment = found.get();
+
+        stateMachine.transition(payment, PaymentStatus.REJECTED, TRIGGERED_BY_ENCODE, reason);
+        outbox.append(
+                payment.paymentId(),
+                PaymentEventType.PAYMENT_REJECTED,
+                new PaymentRejectedEvent(
+                        payment.paymentId(), payment.endToEndId(), "PC-C001", reason, clock.instant()));
+        log.error("pacs.008 을 만들 수 없어 결제를 거절한다 paymentId={} 사유={}", paymentId, reason);
+        return true;
     }
 
     private Pacs008 build(Payment payment, String msgId) {

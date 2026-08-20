@@ -66,8 +66,11 @@ public class PaymentValidatedConsumer {
         try {
             prepared = dispatcher.prepare(eventId, event);
         } catch (ClearingMessageException e) {
-            // 우리가 만든 메시지가 스키마를 어겼다. 재시도해도 같으니 여기서 끝낸다.
-            log.error("pacs.008 생성 실패 — 폐기한다 paymentId={} 원인={}", event.paymentId(), e.getMessage());
+            // 우리가 만든 메시지가 스키마를 어겼다. 재시도해도 결과는 같다. 다만 여기서 그냥 버리면
+            // 결제가 VALIDATED 로 영원히 남는다 — 아무 스케줄러도 그 상태를 보지 않기 때문이다.
+            // 돈은 나가지 않았으므로 확실하게 REJECTED 로 종결시키고 사실을 이벤트로 남긴다.
+            log.error("pacs.008 생성 실패 paymentId={} 원인={}", event.paymentId(), e.getMessage());
+            dispatcher.rejectUnsendable(event.paymentId(), "청산 메시지 규격 위반: " + e.getMessage());
             return;
         }
         prepared.ifPresent(sender::send);

@@ -16,6 +16,8 @@ public enum ErrorCode {
     PAYMENT_NOT_FOUND("PC-B001", "결제 건을 찾을 수 없습니다."),
     /** 허용되지 않은 상태 전이 시도. */
     ILLEGAL_STATE_TRANSITION("PC-B002", "허용되지 않은 상태 전이입니다."),
+    /** 청산 메시지를 규격에 맞게 만들 수 없다 — 재시도해도 같으므로 거절로 종결한다. */
+    CLEARING_MESSAGE_INVALID("PC-C001", "청산 메시지를 생성할 수 없습니다."),
     /** 그 외. 상세 원인은 로그에만 남긴다. */
     INTERNAL_ERROR("PC-S001", "처리 중 오류가 발생했습니다.");
 
