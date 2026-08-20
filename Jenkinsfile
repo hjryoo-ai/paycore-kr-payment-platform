@@ -60,6 +60,17 @@ pipeline {
             }
         }
 
+        stage('Dashboard') {
+            steps {
+                // tsc --noEmit 이 build 스크립트에 포함되어 있다 — 타입 오류는 빌드 실패다.
+                dir('ops-dashboard') {
+                    sh 'npm ci'
+                    sh 'npm test'
+                    sh 'npm run build'
+                }
+            }
+        }
+
         stage('Dependency Scan') {
             steps {
                 // CVSS 7 이상이면 빌드를 깬다 (build.gradle.kts 의 failBuildOnCVSS).
@@ -77,7 +88,8 @@ pipeline {
                 sh './gradlew bootJar -x test --no-daemon'
                 sh 'docker compose build'
                 script {
-                    ['payment-api', 'clearing-gateway', 'clearing-simulator', 'ledger-service', 'recon-batch']
+                    ['payment-api', 'clearing-gateway', 'clearing-simulator', 'ledger-service', 'recon-batch',
+                     'ops-dashboard']
                         .each { svc ->
                             sh "docker tag paycore/${svc}:local paycore/${svc}:${env.IMAGE_TAG}"
                         }

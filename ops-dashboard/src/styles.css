@@ -1,0 +1,85 @@
+/* 디자인보다 판독성이 목적이다 (docs §5.7). 상태 색은 '무엇을 해야 하는가'에 따라 정한다. */
+:root {
+  --bg: #0f1115;
+  --panel: #171a21;
+  --line: #262b36;
+  --text: #e6e8ee;
+  --muted: #8b93a7;
+  --ok: #3fb27f;
+  --warn: #d9a441;
+  --danger: #e0575b;
+  --progress: #5b8def;
+  font-family: -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.85em; }
+.muted { color: var(--muted); font-size: 0.85em; }
+.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+.app { max-width: 1200px; margin: 0 auto; padding: 1.5rem; }
+.app__header { display: flex; align-items: baseline; gap: 1.5rem; border-bottom: 1px solid var(--line); padding-bottom: 1rem; }
+.app__header h1 { font-size: 1.1rem; margin: 0; letter-spacing: 0.02em; }
+.app__header nav { display: flex; gap: 0.25rem; }
+
+button, select, input {
+  background: var(--panel); color: var(--text); border: 1px solid var(--line);
+  border-radius: 6px; padding: 0.4rem 0.7rem; font-size: 0.9rem;
+}
+button { cursor: pointer; }
+button:hover:not(:disabled) { border-color: var(--progress); }
+button:disabled { opacity: 0.4; cursor: not-allowed; }
+.tab { border-color: transparent; }
+.tab--active { border-color: var(--progress); color: var(--progress); }
+
+h2 { font-size: 1rem; margin: 1.5rem 0 0.25rem; }
+h3 { font-size: 0.9rem; margin: 1.75rem 0 0.5rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+h4 { font-size: 0.85rem; margin: 1rem 0 0.5rem; color: var(--muted); }
+
+.toolbar { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: end; margin: 1rem 0; }
+.toolbar label { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.8rem; color: var(--muted); }
+.reason { flex: 1 1 320px; }
+.reason input { width: 100%; }
+.operator__hint { color: var(--warn); font-size: 0.75rem; }
+
+table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+th { text-align: left; color: var(--muted); font-weight: 500; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.06em; }
+th, td { padding: 0.55rem 0.5rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+
+.badge { display: inline-block; padding: 0.1rem 0.45rem; border-radius: 4px; font-size: 0.72rem; font-weight: 600; letter-spacing: 0.03em; }
+.badge--ok { background: rgba(63, 178, 127, 0.15); color: var(--ok); }
+.badge--warn { background: rgba(217, 164, 65, 0.15); color: var(--warn); }
+.badge--danger { background: rgba(224, 87, 91, 0.15); color: var(--danger); }
+.badge--progress { background: rgba(91, 141, 239, 0.15); color: var(--progress); }
+
+.actions { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+.pager { display: flex; align-items: center; gap: 0.75rem; margin: 0.75rem 0; }
+
+.error { background: rgba(224, 87, 91, 0.12); border: 1px solid var(--danger); border-radius: 6px; padding: 0.6rem 0.8rem; margin: 0.75rem 0; display: flex; gap: 0.6rem; align-items: baseline; }
+.error__code { color: var(--danger); font-weight: 700; }
+
+.summary { display: flex; gap: 1rem; align-items: baseline; padding: 0.7rem 0.9rem; border-radius: 6px; margin: 0.75rem 0; border: 1px solid var(--line); }
+.summary--ok { border-color: var(--ok); }
+.summary--danger { border-color: var(--danger); }
+
+.detail { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 1rem; margin-top: 1.25rem; }
+.detail header { display: flex; justify-content: space-between; align-items: center; }
+.detail h3 { margin: 0; text-transform: none; letter-spacing: 0; color: var(--text); }
+.detail dl { display: grid; grid-template-columns: 8rem 1fr; gap: 0.4rem 1rem; margin: 1rem 0; font-size: 0.88rem; }
+.detail dt { color: var(--muted); }
+.detail dd { margin: 0; }
+
+.timeline { list-style: none; padding: 0; margin: 0; font-size: 0.85rem; }
+.timeline li { display: grid; grid-template-columns: 12rem 16rem 10rem 1fr; gap: 0.5rem; padding: 0.35rem 0; border-bottom: 1px solid var(--line); }
+.timeline time, .timeline__by { color: var(--muted); }
+.timeline__reason { color: var(--muted); }
+
+.audit { list-style: none; padding: 0; font-size: 0.85rem; }
+.audit li { padding: 0.3rem 0; border-bottom: 1px solid var(--line); }
+.audit time { color: var(--muted); margin-right: 0.5rem; }
+
+@media (max-width: 900px) {
+  .timeline li { grid-template-columns: 1fr; }
+  .detail dl { grid-template-columns: 1fr; }
+}

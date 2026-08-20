@@ -7,7 +7,7 @@ echo "==> gradlew bootJar"
 ./gradlew bootJar -x test
 
 echo "==> docker compose build"
-docker compose build payment-api clearing-gateway clearing-simulator ledger-service recon-batch
+docker compose build payment-api clearing-gateway clearing-simulator ledger-service recon-batch ops-dashboard
 
 echo "==> done"
 docker images --filter "reference=paycore/*" --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}"

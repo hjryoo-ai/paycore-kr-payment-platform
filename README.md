@@ -39,6 +39,7 @@
 | `clearing-simulator` | 공동망+상대은행 시뮬레이터, 장애 주입 API | 8083 |
 | `ledger-service` | 복식부기 원장 | 8084 |
 | `recon-batch` | EOD 3-way 대사 | 8085 |
+| `ops-dashboard` | 운영 대시보드 (React 19 + Vite + TS) | 8086 |
 
 ## 기술 스택
 
@@ -68,6 +69,7 @@ curl -s localhost:8082/actuator/health   # clearing-gateway
 curl -s localhost:8083/actuator/health   # clearing-simulator
 curl -s localhost:8084/actuator/health   # ledger-service
 curl -s localhost:8085/actuator/health   # recon-batch
+open  http://localhost:8086              # 운영 대시보드
 ```
 
 선택 프로파일:
@@ -111,7 +113,7 @@ docker compose down        # ← 테스트 전에 반드시. 아래 주의사항
 | 5 | EOD 3-way 대사 | ✅ |
 | 6 | DLQ + 운영 repair | ✅ |
 | 7 | CI/CD + 관측성 | ✅ |
-| 8 | React 운영 대시보드 | ⬜ |
+| 8 | React 운영 대시보드 | ✅ |
 | 9 | 데모 스크립트 + 문서 마감 | ⬜ |
 
 ## 상태머신과 Outbox (Phase 2)
@@ -365,7 +367,35 @@ docker compose --profile obs up -d     # Prometheus :9090 · Grafana :3000 (admi
 **실운영이라면 추가할 것**: mTLS · HSM 기반 메시지 서명 · 망분리 · 4-eyes 승인 ·
 운영 API SSO/RBAC · 개인정보 암호화(TDE 또는 컬럼 암호화) · 키 로테이션 · WORM 감사 저장소.
 
-## API (Phase 1~7 구현분)
+## 운영 대시보드 (Phase 8)
+
+화면은 **3개뿐**이다 (docs §5.7). 디자인이 아니라 *운영자가 장애를 처리하는 흐름*을 보여 주는 것이 목적이다.
+
+| 화면 | 무엇을 하는가 |
+|---|---|
+| 결제 조회 | 상태별 검색 + `PAYMENT_STATUS_HISTORY` 기반 타임라인. 각 전이에 **무엇이 일으켰는가**(`triggeredBy`)를 함께 보여 준다 |
+| 워크리스트 | `MANUAL_REVIEW`·`UNKNOWN` 결제와 미처리 DLT. 근거 입력과 조치 버튼이 같은 자리에 있고, 조치 직후 감사 기록이 바로 보인다 |
+| 대사 | 당일 불일치를 **조사 순서대로** 정렬. 돈이 실제로 움직인 유형(`MISSING_AT_CLEARING`, `STATUS_MISMATCH`)이 위로 온다 |
+
+설계 판단 몇 가지:
+
+- **낱말이 판단을 만든다.** `UNKNOWN` 을 "실패"라고 쓰지 않는다 — 화면에는 "지급 여부를 모름 (실패 아님)"으로
+  적고, 그 문구를 테스트로 고정했다. `FAILED`/`REJECTED` 에는 "돈이 나가지 않음"을 명시한다.
+- **조치 전에 막는다.** 운영자 식별자나 근거가 비면 버튼이 잠긴다. 서버 거절만 믿으면 운영자가 버튼을 누르고
+  나서야 이유를 알게 된다.
+- **서버가 준 이유를 버리지 않는다.** 오류는 problem+json 의 `code`·`detail` 을 그대로 올린다.
+  "요청에 실패했습니다"로 덮어쓰면 운영자가 서버 로그를 뒤져야 한다.
+- **`UNKNOWN` 은 조치 대상이지만 확정 대상은 아니다.** 조회가 아직 도는 중이므로 repair 버튼을 주지 않는다.
+- **금액은 정수로만** 표시한다. 화면에 소수가 보이면 시스템이 소수를 다룬다고 오해하게 된다.
+- **CORS 를 열지 않았다.** nginx 가 정적 파일과 API 프록시를 함께 맡으므로 브라우저가 백엔드를 직접 부르지 않는다.
+  개발(Vite 프록시)과 운영(nginx)에서 프런트가 보는 경로가 같아 "로컬에서는 되는데 배포하면 안 되는" 문제가 없다.
+
+```bash
+cd ops-dashboard && npm ci && npm run dev   # :5173, 백엔드로 프록시
+npm test                                    # vitest
+```
+
+## API (Phase 1~8 구현분)
 
 | 메서드 | 경로 | 설명 |
 |---|---|---|

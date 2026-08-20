@@ -93,6 +93,24 @@ services:
       retries: 20
       start_period: 20s
 
+  # 운영 대시보드 (docs §5.7). nginx 가 정적 파일과 API 프록시를 함께 맡는다 —
+  # 브라우저가 백엔드를 직접 부르지 않으므로 CORS 를 열 필요가 없다.
+  ops-dashboard:
+    <<: *app-common
+    build: ./ops-dashboard
+    image: paycore/ops-dashboard:local
+    container_name: paycore-ops-dashboard
+    ports: ["8086:8086"]
+    depends_on:
+      payment-api: {condition: service_healthy}
+      recon-batch: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8086/healthz >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
   # 선택: 실제 IBM MQ. arm64 미지원이라 에뮬레이션으로 동작한다(느림).
   ibmmq:
     image: icr.io/ibm-messaging/mq:latest
