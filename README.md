@@ -101,7 +101,7 @@ Artemis 콘솔 <http://localhost:8161> (`paycore/paycore`) · Kafka 호스트 �
 | 1 | 접수 API + 멱등성 | ✅ |
 | 2 | 상태머신 + Outbox + Kafka | ✅ |
 | 3 | 청산 연동 + 시뮬레이터 | ✅ |
-| 4 | 복식부기 원장 | ⬜ |
+| 4 | 복식부기 원장 | ✅ |
 | 5 | EOD 3-way 대사 | ⬜ |
 | 6 | DLQ + 운영 repair | ⬜ |
 | 7 | CI/CD + 관측성 | ⬜ |
@@ -186,7 +186,34 @@ scripts/chaos/scenario-03-never-received.sh              # UNKNOWN → inquiry(N
 scripts/chaos/scenario-04-duplicate-response.sh          # 중복 응답 → 전이 1회
 ```
 
-## API (Phase 1~3 구현분)
+## 복식부기 원장 (Phase 4)
+
+이체 1건은 분개 1벌, 명세 2줄이 된다.
+
+| 방향 | 계정 | 금액 |
+|---|---|---|
+| 차변 `D` | 고객 출금계좌 | 1,500,000 |
+| 대변 `C` | 청산미결제(`CLEARING_SUSPENSE`) | 1,500,000 |
+
+금액은 항상 **양수**이고 방향은 `DR_CR` 이 나타낸다. 음수 금액으로 방향을 표현하면 합계 0 검증이
+부호 실수 하나로 조용히 통과한다. 합계 0 은 코드와 DB `CHECK` 양쪽에서 막는다.
+
+### 재소비돼도 분개는 한 벌
+
+| 방어 | 무엇을 막는가 | 테스트 |
+|---|---|---|
+| `PROCESSED_MESSAGE` inbox | 같은 메시지의 재전달 | `LedgerIdempotencyIT` |
+| `JOURNAL(PAYMENT_ID)` UNIQUE | 메시지 ID 가 달라도(아웃박스 재발행) 같은 결제 | `LedgerIdempotencyIT` |
+
+**시나리오 #5** 는 흉내내지 않고 실제로 재현한다 — 리스너를 세우고 `AdminClient` 로 소비자 그룹
+오프셋을 0 으로 되감은 뒤 다시 띄워 이미 처리한 메시지를 강제로 재소비시킨다. 그래도 분개는
+그대로이고 `journalId` 까지 동일하다.
+
+`CLEARED → SETTLED` 전이는 원장이 아니라 payment-api 가 한다. 원장은 기록하는 쪽이지 결제 상태를
+소유하는 쪽이 아니다. 잔액도 저장하지 않고 `LEDGER_ENTRY` 합계에서 유도한다 — 잔액 컬럼을 따로 두면
+그것과 명세가 어긋나는 순간 어느 쪽이 진실인지 아무도 모른다.
+
+## API (Phase 1~4 구현분)
 
 | 메서드 | 경로 | 설명 |
 |---|---|---|
@@ -217,6 +244,14 @@ curl -si -X POST localhost:8081/api/v1/payments \
 | `GET` | `/simulator/transfers[/{endToEndId}]` | 청산망이 아는 처리 내역 |
 | `POST` | `/simulator/eod?date=YYYY-MM-DD` | EOD CSV 생성 (recon-batch 입력) |
 | `GET` | `/simulator/eod/{date}` | EOD CSV 내려받기 |
+
+원장 조회 API (`:8084`):
+
+| 메서드 | 경로 | 설명 |
+|---|---|---|
+| `GET` | `/api/v1/ledger/journals/{paymentId}` | 분개 + 명세 2줄 (계좌 마스킹, `imbalance` 포함) |
+| `GET` | `/api/v1/ledger/accounts/{accountId}` | 차변/대변 합계와 순액 — 저장값이 아니라 유도값 |
+| `GET` | `/api/v1/ledger/imbalance` | 전체 장부 불균형. `0` 이 아니면 즉시 조사 대상 |
 
 ## 단순화 선언 (실제 결제망과 다른 점)
 
