@@ -1,6 +1,7 @@
 package kr.paycore.core.kafka;
 
 import kr.paycore.core.config.PaymentCoreProperties;
+import kr.paycore.core.messaging.KafkaRetryProperties;
 import org.apache.kafka.clients.admin.NewTopic;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -21,6 +22,18 @@ public class KafkaTopicConfig {
     @Bean
     public NewTopic paymentEventsTopic(PaymentCoreProperties properties) {
         return TopicBuilder.name(properties.eventsTopic())
+                .partitions(PARTITIONS)
+                .replicas(REPLICAS)
+                .build();
+    }
+
+    /**
+     * DLT 도 명시 선언한다 (docs §7.5). 자동 생성에 맡기면 기본 파티션 수로 만들어지는데,
+     * 실패한 레코드를 <b>원본과 같은 파티션 번호</b>로 보내는 정책이 파티션 수가 모자라면 그대로 실패한다.
+     */
+    @Bean
+    public NewTopic paymentEventsDltTopic(PaymentCoreProperties properties, KafkaRetryProperties retry) {
+        return TopicBuilder.name(properties.eventsTopic() + retry.dltSuffix())
                 .partitions(PARTITIONS)
                 .replicas(REPLICAS)
                 .build();

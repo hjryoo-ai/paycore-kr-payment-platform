@@ -2,6 +2,7 @@ package kr.paycore.ledger.posting;
 
 import kr.paycore.core.event.PaymentClearedEvent;
 import kr.paycore.core.event.PaymentEventType;
+import kr.paycore.core.messaging.PermanentMessageException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.kafka.annotation.KafkaListener;
@@ -46,17 +47,16 @@ public class PaymentClearedConsumer {
             return;
         }
         if (eventId == null || eventId.isBlank()) {
-            log.error("eventId 헤더가 없는 이벤트 — 폐기한다 key={}", key);
-            return;
+            throw new PermanentMessageException("eventId 헤더가 없는 이벤트 key=" + key);
         }
 
         PaymentClearedEvent event;
         try {
             event = objectMapper.readValue(payload, PaymentClearedEvent.class);
         } catch (RuntimeException e) {
-            // 스키마가 깨진 메시지는 재시도해도 같다. 즉시 폐기해 poison message 루프를 만들지 않는다(docs §7.5).
-            log.error("PaymentCleared 역직렬화 실패 — 폐기한다 eventId={} 원인={}", eventId, e.toString());
-            return;
+            // 스키마가 깨진 메시지는 재시도해도 같다. 재시도 없이 DLT 로 보낸다 — 원장에 반영되지 못한
+            // 청산 완료 건은 반드시 사람이 봐야 한다(docs §7.5).
+            throw new PermanentMessageException("PaymentCleared 역직렬화 실패 eventId=" + eventId, e);
         }
         posting.post(eventId, event);
     }

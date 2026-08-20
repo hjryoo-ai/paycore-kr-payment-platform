@@ -4,6 +4,7 @@ import java.util.Optional;
 import kr.paycore.common.clearing.ClearingMessageException;
 import kr.paycore.core.event.PaymentEventType;
 import kr.paycore.core.event.PaymentValidatedEvent;
+import kr.paycore.core.messaging.PermanentMessageException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.kafka.annotation.KafkaListener;
@@ -49,17 +50,17 @@ public class PaymentValidatedConsumer {
             return;
         }
         if (eventId == null || eventId.isBlank()) {
-            // dedup 키가 없으면 멱등성을 보장할 수 없다. 처리하지 않는 편이 안전하다(docs §7.5 영구 오류).
-            log.error("eventId 헤더가 없는 이벤트 — 폐기한다 key={}", key);
-            return;
+            // dedup 키가 없으면 멱등성을 보장할 수 없다. 재시도해도 헤더가 생기지 않으므로 영구 오류다.
+            throw new PermanentMessageException("eventId 헤더가 없는 이벤트 key=" + key);
         }
 
         PaymentValidatedEvent event;
         try {
             event = objectMapper.readValue(payload, PaymentValidatedEvent.class);
         } catch (RuntimeException e) {
-            log.error("PaymentValidated 역직렬화 실패 — 폐기한다 eventId={} 원인={}", eventId, e.toString());
-            return;
+            // 깨진 payload 는 재시도 대상이 아니다. 던져서 DLT 워크리스트에 올린다 — 조용히 버리면
+            // 결제 하나가 사라진 사실을 아무도 모른다.
+            throw new PermanentMessageException("PaymentValidated 역직렬화 실패 eventId=" + eventId, e);
         }
 
         Optional<OutgoingMessage> prepared;
@@ -69,6 +70,7 @@ public class PaymentValidatedConsumer {
             // 우리가 만든 메시지가 스키마를 어겼다. 재시도해도 결과는 같다. 다만 여기서 그냥 버리면
             // 결제가 VALIDATED 로 영원히 남는다 — 아무 스케줄러도 그 상태를 보지 않기 때문이다.
             // 돈은 나가지 않았으므로 확실하게 REJECTED 로 종결시키고 사실을 이벤트로 남긴다.
+            // 이 경우는 결제가 종결됐으므로 DLT 로 보내지 않는다 — 사람이 볼 것은 REJECTED 사유다.
             log.error("pacs.008 생성 실패 paymentId={} 원인={}", event.paymentId(), e.getMessage());
             dispatcher.rejectUnsendable(event.paymentId(), "청산 메시지 규격 위반: " + e.getMessage());
             return;

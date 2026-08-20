@@ -103,7 +103,7 @@ Artemis 콘솔 <http://localhost:8161> (`paycore/paycore`) · Kafka 호스트 �
 | 3 | 청산 연동 + 시뮬레이터 | ✅ |
 | 4 | 복식부기 원장 | ✅ |
 | 5 | EOD 3-way 대사 | ✅ |
-| 6 | DLQ + 운영 repair | ⬜ |
+| 6 | DLQ + 운영 repair | ✅ |
 | 7 | CI/CD + 관측성 | ⬜ |
 | 8 | React 운영 대시보드 | ⬜ |
 | 9 | 데모 스크립트 + 문서 마감 | ⬜ |
@@ -242,7 +242,44 @@ DB 도 시계도 만지지 않는다. 대사 규칙은 조합을 전수로 확�
 재실행하면 그 날짜의 `OPEN` 만 교체하고 `RESOLVED` 는 남긴다 — 운영자가 처리한 기록을 배치가 지우면
 같은 건을 매일 처음부터 다시 조사하게 된다.
 
-## API (Phase 1~5 구현분)
+## 실패한 메시지와 사람의 개입 (Phase 6)
+
+### 일시 오류와 영구 오류를 구분한다
+
+이 구분이 poison message 방어의 전부다. 깨진 payload 를 DB 커넥션 오류와 똑같이 재시도하면
+**그 메시지 하나가 파티션을 영원히 막고 뒤에 줄 선 정상 결제들이 함께 멈춘다.**
+
+| 오류 | 처리 |
+|---|---|
+| `PermanentMessageException` · 역직렬화 실패 | **재시도 없이 즉시 DLT** |
+| 그 밖(DB 커넥션 등) | 지수 backoff 로 3회 재시도 후 DLT |
+
+DLT 토픽(`payment.events.DLT`)은 명시 선언한다. 실패 레코드를 원본과 같은 파티션 번호로 보내는
+정책이라 파티션 수가 모자라면 그대로 실패하기 때문이다.
+
+### DLT 는 보이는 곳에 있어야 처리된다
+
+토픽에만 두면 아무도 보지 않는다. DLT 전용 소비자가 `DEAD_LETTER` 테이블에 적재하고 워크리스트로
+노출한다. 이 소비자는 **비즈니스 로직을 절대 실행하지 않는다** — "한 번 더 해보는" 순간 그것이
+자동 재주입이고, §7.5 가 금지하는 것이다.
+
+재발행이 안전한 이유는 운영자가 조심해서가 아니라 **구조** 때문이다: 모든 소비자가
+`PROCESSED_MESSAGE` inbox 를 거치므로 이미 처리된 메시지가 다시 들어와도 두 번 처리되지 않는다.
+
+### repair 는 예외 통로가 아니다
+
+| 규칙 | 이유 |
+|---|---|
+| 전이표에 있는 길만 간다 | 상태머신을 우회하는 통로를 만들면 전이표는 더 이상 진실이 아니다 |
+| 근거(`reason`) 필수 | 설명할 수 없는 상태 변경은 사고와 구분되지 않는다 |
+| `X-Operator` 헤더 필수 | 익명 개입을 허용하는 순간 감사 로그가 무의미해진다 |
+| 감사 기록이 **같은 커밋** | "바꿨는데 기록이 없다"를 만들지 않는다 — 아웃박스·inbox 와 같은 이유 |
+| 확정 후 하류로 이벤트 발행 | 운영자 확정이 원장까지 이어져야 대사가 닫힌다 |
+
+**시나리오 #7**: 깨진 payload 주입 → 재시도 없이 DLT → 같은 파티션의 뒤이은 결제는 정상 처리
+(`PoisonMessageDltIT`, `scripts/chaos/scenario-07-poison-message.sh`).
+
+## API (Phase 1~6 구현분)
 
 | 메서드 | 경로 | 설명 |
 |---|---|---|
@@ -289,6 +326,17 @@ curl -si -X POST localhost:8081/api/v1/payments \
 | `POST` | `/api/v1/recon/run?date=YYYY-MM-DD` | 일마감 대사 실행 → 요약 + 리포트 경로 |
 | `GET` | `/api/v1/recon/breaks?date=&status=` | 불일치 목록 (대시보드 입력) |
 
+운영 API (`:8081`) — 모두 `X-Operator` 헤더 필수, 모두 감사 기록:
+
+| 메서드 | 경로 | 설명 |
+|---|---|---|
+| `GET` | `/api/v1/ops/worklist?status=` | 사람이 봐야 하는 결제 (기본 `MANUAL_REVIEW`) |
+| `POST` | `/api/v1/ops/payments/{paymentId}/repair` | `{"decision":"CLEARED\|FAILED","reason":"..."}` |
+| `GET` | `/api/v1/ops/dead-letters?status=` | DLT 워크리스트 |
+| `POST` | `/api/v1/ops/dead-letters/{id}/republish` | 원인 확인 후 재발행 (자동 재주입 금지) |
+| `POST` | `/api/v1/ops/dead-letters/{id}/discard` | 재처리하지 않기로 함 — 지우지 않고 상태만 바꾼다 |
+| `GET` | `/api/v1/ops/audit?targetType=&targetId=` | 감사 추적 |
+
 ## 단순화 선언 (실제 결제망과 다른 점)
 
 실제 금융결제원/한은금융망 전문 규격은 비공개이므로 구현하지 않았다. 무엇을 단순화했는지 명시한다.
@@ -297,7 +345,7 @@ curl -si -X POST localhost:8081/api/v1/payments \
 - **시뮬레이터 상태**: 처리 기록을 메모리에 둔다. 재기동하면 잊는다 — '상대편'이라 우리 스키마를 공유하지 않는다는 것을 드러내기 위한 선택이다.
 - **시뮬레이터 모드**: 설계 §5.4 표에 `DROP_REQUEST` 를 추가했다 ([ADR-0009](docs/adr/0009-simulator-drop-request-mode.md)) — `DOWN`(큐에 쌓임)만으로는 '실제 미처리'를 재현할 수 없다.
 - **차액결제**: 한은금융망 최종 결제 대신 시뮬레이터의 EOD 파일 생성으로 대체.
-- **인증/인가**: API key 수준. 실제라면 mTLS + HSM 기반 메시지 서명 + 망분리 + 4-eyes 승인이 필요하다.
+- **인증/인가**: 운영 API 는 `X-Operator` 헤더로 행위자만 식별한다. 실제라면 SSO + 권한 + 4-eyes 승인, 그리고 mTLS + HSM 기반 메시지 서명 + 망분리가 필요하다. 여기서는 **누가 했는지가 반드시 남는다**는 점만 지킨다.
 - **스키마**: 서비스별 분리 없이 단일 Oracle 스키마 ([ADR-0004](docs/adr/0004-single-schema-flyway-owned-by-payment-api.md)). 서비스가 늘면 스키마 분리 + 전용 마이그레이션 컨테이너로 진화.
 - **시각 컬럼**: `TIMESTAMP WITH TIME ZONE` ([ADR-0005](docs/adr/0005-timestamp-with-time-zone.md)). 업무일자(`RECON_DATE`)만 `DATE`.
 - **Outbox 발행**: 폴링 방식. 실무 규모에서는 Debezium CDC가 낫고, 그 진화 경로를 [ADR](docs/adr/)에 남긴다.

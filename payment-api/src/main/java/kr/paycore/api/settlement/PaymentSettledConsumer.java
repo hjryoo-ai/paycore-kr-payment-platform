@@ -2,6 +2,7 @@ package kr.paycore.api.settlement;
 
 import kr.paycore.core.event.PaymentEventType;
 import kr.paycore.core.event.PaymentSettledEvent;
+import kr.paycore.core.messaging.PermanentMessageException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.kafka.annotation.KafkaListener;
@@ -41,16 +42,14 @@ public class PaymentSettledConsumer {
             return;
         }
         if (eventId == null || eventId.isBlank()) {
-            log.error("eventId 헤더가 없는 이벤트 — 폐기한다 key={}", key);
-            return;
+            throw new PermanentMessageException("eventId 헤더가 없는 이벤트 key=" + key);
         }
 
         PaymentSettledEvent event;
         try {
             event = objectMapper.readValue(payload, PaymentSettledEvent.class);
         } catch (RuntimeException e) {
-            log.error("PaymentSettled 역직렬화 실패 — 폐기한다 eventId={} 원인={}", eventId, e.toString());
-            return;
+            throw new PermanentMessageException("PaymentSettled 역직렬화 실패 eventId=" + eventId, e);
         }
         settlement.settle(eventId, event);
     }

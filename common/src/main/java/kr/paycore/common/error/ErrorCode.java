@@ -18,6 +18,10 @@ public enum ErrorCode {
     ILLEGAL_STATE_TRANSITION("PC-B002", "허용되지 않은 상태 전이입니다."),
     /** 청산 메시지를 규격에 맞게 만들 수 없다 — 재시도해도 같으므로 거절로 종결한다. */
     CLEARING_MESSAGE_INVALID("PC-C001", "청산 메시지를 생성할 수 없습니다."),
+    /** 운영자가 요청한 상태 변경이 전이표에 없다. repair 는 예외 통로가 아니다. */
+    PAYMENT_NOT_REPAIRABLE("PC-O001", "해당 결제는 이 방식으로 처리할 수 없습니다."),
+    /** DLT 항목이 없거나 이미 처리됐다. */
+    DEAD_LETTER_NOT_ACTIONABLE("PC-O002", "해당 DLT 항목은 처리할 수 없습니다."),
     /** 그 외. 상세 원인은 로그에만 남긴다. */
     INTERNAL_ERROR("PC-S001", "처리 중 오류가 발생했습니다.");
 

@@ -47,6 +47,12 @@ public abstract class AbstractPaymentApiIT {
      */
     protected void cleanDatabase() {
         await().until(() -> countByStatus("RECEIVED") == 0);
+        jdbc.execute("DELETE FROM DEAD_LETTER");
+        jdbc.execute("DELETE FROM OPERATION_AUDIT");
+        jdbc.execute("DELETE FROM PROCESSED_MESSAGE");
+        jdbc.execute("DELETE FROM LEDGER_ENTRY");
+        jdbc.execute("DELETE FROM JOURNAL");
+        jdbc.execute("DELETE FROM CLEARING_MESSAGE_LOG");
         jdbc.execute("DELETE FROM OUTBOX_EVENT");
         jdbc.execute("DELETE FROM PAYMENT_STATUS_HISTORY");
         jdbc.execute("DELETE FROM PAYMENT");

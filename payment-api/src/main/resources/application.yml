@@ -59,8 +59,17 @@ paycore:
     stuck-after: 30s                    # RECEIVED 로 이 시간 이상 머물면 스위퍼가 재처리
     sweep-interval: 15s
 
+    # 소비 실패 시 재시도/DLT 정책 (docs §7.5)
+    retry:
+      max-attempts: 3
+      initial-backoff: 1s
+      backoff-multiplier: 2.0
+      max-backoff: 10s
+      dlt-suffix: .DLT
+
   api:
     consumer-group: ${PAYCORE_API_GROUP:payment-api}
+    dlt-consumer-group: ${PAYCORE_API_DLT_GROUP:payment-api-dlt}
 
   # 접수 입력 검증 정책 (docs §5.1). 은행코드는 화이트리스트다.
   intake:

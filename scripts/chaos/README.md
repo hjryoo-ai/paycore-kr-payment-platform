@@ -16,11 +16,12 @@ scripts/chaos/scenario-04-duplicate-response.sh          # 중복 pacs.002
 | 2 | `PROCESS_BUT_NO_RESPONSE` | `UNKNOWN` → inquiry → `CLEARED`, 이체 1건, 재송신 0회 | `TimeoutAndInquiryIT#scenario2_processedButNoResponse` |
 | 3 | `DROP_REQUEST` | `UNKNOWN` → inquiry(`NOOR`) → `FAILED` 확정 | `TimeoutAndInquiryIT#scenario3_neverReceived` |
 | 4 | `DUPLICATE_RESPONSE` | 상태 전이 1회, 이벤트 1건 | `ClearingIdempotencyIT#scenario4_duplicateResponse` |
+| 7 | 깨진 payload 를 토픽에 직접 주입 | 재시도 없이 DLT, 뒤이은 메시지 계속 처리 | `PoisonMessageDltIT#poisonMessageGoesToDltAndTrafficKeepsFlowing` |
 | 8 | `PROCESS_BUT_NO_RESPONSE` → `DOWN` 후 EOD | `MISSING_AT_US` break 생성 + md 리포트 | `ReconBatchIT#scenario8_unattendedUnknownIsDetected` |
 
 시나리오 #1(이중 클릭)과 #6(발행 직전 크래시)은 각각 `PaymentIntakeIdempotencyIT`,
 `OutboxCrashRecoveryIT` 로 자동화되어 있다. #5(consumer 강제 재소비)는 `LedgerIdempotencyIT`
-가 실제로 오프셋을 되감아 재현한다. #7(poison message)은 Phase 6 에서 추가된다.
+가 실제로 오프셋을 되감아 재현한다. 이로써 설계 §8 의 시나리오 8종이 모두 자동화됐다.
 
 ## 시뮬레이터 모드 API
 

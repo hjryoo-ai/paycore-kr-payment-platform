@@ -5,6 +5,8 @@ import java.net.URI;
 import java.time.Clock;
 import java.util.List;
 import java.util.Map;
+import kr.paycore.api.ops.DeadLetterNotActionableException;
+import kr.paycore.api.ops.PaymentNotRepairableException;
 import kr.paycore.common.error.ErrorCode;
 import kr.paycore.core.intake.IdempotencyKeyReusedException;
 import org.slf4j.Logger;
@@ -16,6 +18,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.HandlerMethodValidationException;
 
 /**
  * RFC 9457 problem+json 오류 응답 (docs §10.2).
@@ -54,6 +57,48 @@ public class GlobalExceptionHandler {
         ProblemDetail pd = problem(HttpStatus.BAD_REQUEST, ErrorCode.VALIDATION_FAILED, "요청 파라미터 검증 실패");
         pd.setProperty("errors", errors);
         log.warn("파라미터 검증 실패 errors={}", errors);
+        return pd;
+    }
+
+    /**
+     * 메서드 파라미터 제약 위반 (Spring 6.1+).
+     *
+     * <p>{@code @RequestHeader} 같은 파라미터에 제약이 하나라도 붙으면 스프링은 본문 검증까지
+     * 메서드 검증으로 묶어 이 예외로 던진다. 이걸 처리하지 않으면 <b>클라이언트 잘못이 500 으로</b>
+     * 나가고, 운영자는 서버 장애를 의심하며 시간을 쓴다.
+     */
+    @ExceptionHandler(HandlerMethodValidationException.class)
+    public ProblemDetail onMethodValidation(HandlerMethodValidationException e) {
+        List<Map<String, String>> errors = e.getParameterValidationResults().stream()
+                .flatMap(result -> result.getResolvableErrors().stream()
+                        .map(error -> Map.of(
+                                "field",
+                                result.getMethodParameter().getParameterName() == null
+                                        ? "request"
+                                        : result.getMethodParameter().getParameterName(),
+                                "message",
+                                String.valueOf(error.getDefaultMessage()))))
+                .toList();
+        ProblemDetail pd = problem(HttpStatus.BAD_REQUEST, ErrorCode.VALIDATION_FAILED, "요청 검증 실패");
+        pd.setProperty("errors", errors);
+        log.warn("메서드 파라미터 검증 실패 errors={}", errors);
+        return pd;
+    }
+
+    @ExceptionHandler(PaymentNotRepairableException.class)
+    public ProblemDetail onNotRepairable(PaymentNotRepairableException e) {
+        // 409 다. 요청 형식이 틀린 게 아니라 지금 상태에서 할 수 없는 일이라는 뜻이다.
+        ProblemDetail pd = problem(HttpStatus.CONFLICT, ErrorCode.PAYMENT_NOT_REPAIRABLE, e.getMessage());
+        pd.setProperty("paymentId", e.paymentId());
+        log.warn("repair 거절 paymentId={} 사유={}", e.paymentId(), e.getMessage());
+        return pd;
+    }
+
+    @ExceptionHandler(DeadLetterNotActionableException.class)
+    public ProblemDetail onDeadLetterNotActionable(DeadLetterNotActionableException e) {
+        ProblemDetail pd = problem(HttpStatus.CONFLICT, ErrorCode.DEAD_LETTER_NOT_ACTIONABLE, e.getMessage());
+        pd.setProperty("deadLetterId", e.deadLetterId());
+        log.warn("DLT 처리 거절 deadLetterId={} 사유={}", e.deadLetterId(), e.getMessage());
         return pd;
     }
 
