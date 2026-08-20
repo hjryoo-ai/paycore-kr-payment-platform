@@ -1,0 +1,109 @@
+server:
+  port: 8081
+  shutdown: graceful
+
+spring:
+  application:
+    name: payment-api
+  datasource:
+    url: ${PAYCORE_DB_URL:jdbc:oracle:thin:@//localhost:1521/FREEPDB1}
+    username: ${PAYCORE_DB_USER:paycore}
+    password: ${PAYCORE_DB_PASSWORD:paycore}
+    driver-class-name: oracle.jdbc.OracleDriver
+    hikari:
+      maximum-pool-size: 10
+      connection-timeout: 10000
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: none
+    properties:
+      hibernate.format_sql: true
+  # 스키마 소유자: payment-api 만 Flyway 를 실행한다 (docs/adr/0004)
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+  kafka:
+    bootstrap-servers: ${PAYCORE_KAFKA:localhost:29092}
+    producer:
+      # 돈이 걸린 이벤트다. 속도보다 '한 번 보낸 것은 남는다'가 우선이다.
+      acks: all
+      properties:
+        enable.idempotence: true          # 브로커 재시도로 인한 중복 레코드 방지
+        max.in.flight.requests.per.connection: 5
+        delivery.timeout.ms: 20000
+        request.timeout.ms: 10000
+      retries: 5
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+    consumer:
+      # PaymentSettled 를 받아 CLEARED -> SETTLED 로 닫는다 (docs §4.1)
+      group-id: ${PAYCORE_API_GROUP:payment-api}
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    listener:
+      ack-mode: record
+
+# payment-core 오케스트레이션 파라미터 (docs §5.2)
+paycore:
+  core:
+    events-topic: payment.events
+    outbox-poll-interval: 5s
+    outbox-batch-size: 100
+    outbox-publish-timeout: 10s
+    default-daily-limit: 5000000000     # 계좌당 1일 50억원
+    duplicate-window: 5m                # 동일 (출금/입금/금액) 재접수를 중복 의심으로 보는 창
+    stuck-after: 30s                    # RECEIVED 로 이 시간 이상 머물면 스위퍼가 재처리
+    sweep-interval: 15s
+
+  api:
+    consumer-group: ${PAYCORE_API_GROUP:payment-api}
+
+  # 접수 입력 검증 정책 (docs §5.1). 은행코드는 화이트리스트다.
+  intake:
+    max-amount: 1000000000          # 1건당 10억원
+    allowed-currency: KRW
+    allowed-bank-codes:       # 금융기관 표준코드 (은행 + 인터넷전문은행 + 상호금융)
+      - "002"   # 산업
+      - "003"   # 기업
+      - "004"   # 국민
+      - "007"   # 수협
+      - "011"   # 농협
+      - "020"   # 우리
+      - "023"   # SC제일
+      - "027"   # 씨티
+      - "031"   # 대구
+      - "032"   # 부산
+      - "034"   # 광주
+      - "035"   # 제주
+      - "037"   # 전북
+      - "039"   # 경남
+      - "045"   # 새마을금고
+      - "048"   # 신협
+      - "071"   # 우체국
+      - "081"   # 하나
+      - "088"   # 신한
+      - "089"   # 케이뱅크
+      - "090"   # 카카오뱅크
+      - "092"   # 토스뱅크
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true
+  health:
+    defaults:
+      enabled: true
+
+logging:
+  level:
+    kr.paycore: DEBUG

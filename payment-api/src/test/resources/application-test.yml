@@ -1,0 +1,23 @@
+# 통합 테스트 프로파일. DataSource 는 @ServiceConnection 이 컨테이너에서 채워준다.
+spring:
+  flyway:
+    enabled: true
+    clean-disabled: false
+  jpa:
+    hibernate:
+      ddl-auto: none
+  kafka:
+    bootstrap-servers: ${PAYCORE_KAFKA:localhost:29092}   # @DynamicPropertySource 가 컨테이너 주소로 덮어쓴다
+
+# 테스트에서는 주기를 짧게 — 단, Thread.sleep 이 아니라 Awaitility 로 기다린다.
+paycore:
+  core:
+    outbox-poll-interval: 300ms
+    sweep-interval: 500ms
+    stuck-after: 2s
+
+logging:
+  level:
+    kr.paycore: DEBUG
+    org.testcontainers: INFO
+    com.github.dockerjava: WARN
