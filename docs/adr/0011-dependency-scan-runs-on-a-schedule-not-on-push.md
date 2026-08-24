@@ -28,6 +28,25 @@ NVD 에 1000자를 넘는 reference URL(Mozilla bugzilla 의 다건 조회 링�
 - 실제 소요: 최초 실행 **2시간 25분**, 캐시가 일부 남은 실행 **32분**.
 - 그리고 이 시간의 결과는 우리 코드가 아니라 **외부 API 의 그날 상태**에 달려 있다.
 
+버전을 올리고 나서 두 번째 원인이 하나 더 드러났다. **13.x 는 NVD API 키가 없으면 아예 돌지 않는다.**
+
+```
+NvdApiException: Invalid API Key, length of 0 too short to provided a masked partial key
+```
+
+추적하면 상류 버그다. `dependencycheck.properties` 에 `nvd.api.key=` 가 빈 값으로 들어 있고,
+`Settings.getString` 은 그 `""` 를 그대로 돌려주는데, `NvdApiDataSource` 는
+
+```java
+final String key = settings.getString(Settings.KEYS.NVD_API_KEY);
+if (key != null) { builder.withApiKey(key) ... }
+```
+
+처럼 `null` 만 보고 빈 값을 거르지 않는다. 그래서 빈 키가 NVD 로 나가고 NVD 가 `Invalid apiKey`
+로 거절한다. 빌드 쪽에서 빈 값을 걸러도 소용없다 — Gradle 플러그인은 이미 `setStringIfNotEmpty`
+를 쓰고 있어서, 빈 문자열의 출처가 우리 설정이 아니라 도구의 기본 properties 이기 때문이다.
+즉 키는 "권장"이 아니라 **필수**다.
+
 즉 이 검사를 푸시 게이트에 두면, 한 줄 오타를 고친 커밋이 NVD 의 가용성에 인질로 잡힌다.
 
 ## 결정
@@ -68,4 +87,6 @@ Jenkins 파이프라인(§10.1 stage 4)은 그대로 파이프라인 안에 둔�
 
 - 푸시/PR CI 는 외부 API 가용성과 무관해진다.
 - NVD 스캔 결과를 지금 당장 보고 싶으면 Actions 탭에서 **Run workflow** 로 돌린다.
-- `NVD_API_KEY` 를 저장소 시크릿에 넣으면 스캔이 열 배 빨라진다. 없어도 동작은 한다.
+- `NVD_API_KEY` 는 저장소 시크릿에 **반드시** 있어야 한다. 없으면 워크플로가 스캔 전에
+  분명한 메시지로 먼저 죽는다 — 몇 분 태우고 `length of 0 too short` 라는 수수께끼로
+  죽는 것보다 낫다.

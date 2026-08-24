@@ -161,6 +161,20 @@ jobs:
           key: nvd-data-${{ github.run_id }}
           restore-keys: nvd-data-
 
+      # 키가 없으면 dependency-check 13.x 는 빈 문자열을 NVD 로 보내고 거절당한다.
+      # 그때 나오는 메시지가 "length of 0 too short to provided a masked partial key" 라
+      # 원인이 전혀 드러나지 않는다. 몇 분 태우고 수수께끼로 죽느니 먼저 분명하게 죽는다.
+      - name: NVD API 키 확인
+        env:
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+        run: |
+          if [ -z "$NVD_API_KEY" ]; then
+            echo "::error::NVD_API_KEY 시크릿이 없다. dependency-check 13.x 는 키 없이 동작하지 않는다."
+            echo "  gh secret set NVD_API_KEY --repo ${{ github.repository }}"
+            exit 1
+          fi
+          echo "NVD API 키 확인됨 (길이 ${#NVD_API_KEY})"
+
       - name: 의존성 취약점 스캔 (CVSS 7 이상이면 실패)
         env:
           NVD_API_KEY: ${{ secrets.NVD_API_KEY }}

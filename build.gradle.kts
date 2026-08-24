@@ -79,9 +79,16 @@ subprojects {
 dependencyCheck {
     failBuildOnCVSS = 7.0f
     formats = listOf("HTML", "JSON")
-    // 키가 없으면 NVD 는 5 req/30s, 있으면 50 req/30s 로 열 배 차이가 난다.
-    // 없어도 동작은 하지만 첫 적재가 두 시간대가 된다 — CI 에서는 캐시로 보완한다.
-    nvd.apiKey = System.getenv("NVD_API_KEY") ?: ""
+    // NVD_API_KEY 는 선택이 아니라 필수다. 13.0.0 은 키가 없으면 빈 문자열을 그대로
+    // NVD 에 보내고 NVD 가 "Invalid apiKey" 로 거절한다:
+    //   NvdApiException: Invalid API Key, length of 0 too short to provided a masked partial key
+    // 원인이 전혀 드러나지 않는 메시지라 한 번 적어 둔다 — 상류 버그다.
+    //   dependencycheck.properties 에 `nvd.api.key=` 가 빈 값으로 들어 있고,
+    //   Settings.getString 은 그 ""를 그대로 돌려주는데,
+    //   NvdApiDataSource 는 `if (key != null)` 만 보고 빈 값을 거르지 않는다.
+    // 그래서 여기서 빈 값을 걸러도 소용이 없다(플러그인도 setStringIfNotEmpty 를 쓴다).
+    // 진짜 키를 넣는 것 외에 방법이 없다. 조건을 남겨 두는 건 의도를 드러내기 위해서다.
+    System.getenv("NVD_API_KEY")?.takeIf { it.isNotBlank() }?.let { nvd.apiKey = it }
     suppressionFile = "config/dependency-check-suppressions.xml"
     // OSS Index 는 자격증명이 없으면 어차피 스스로 비활성화되면서 jar 마다 에러 한 줄씩을 남긴다.
     // 켜져 있다는 착시만 주므로 명시적으로 끈다. 취약점 판정은 NVD 가 한다.

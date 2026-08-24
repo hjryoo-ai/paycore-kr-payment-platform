@@ -402,7 +402,7 @@ docker compose down        # ← required before testing; see the warning below
 ./gradlew build            # compile + format check + tests
 ./gradlew spotlessApply    # auto-format
 ./gradlew bootJar          # runnable jars
-./gradlew dependencyCheckAggregate   # OWASP scan — slow without NVD_API_KEY (5 req/30s vs 50)
+./gradlew dependencyCheckAggregate   # OWASP scan — NVD_API_KEY is required, not optional
 ```
 
 > **Do not run the compose stack and the test suite at the same time.** Integration tests spin up their
@@ -434,7 +434,8 @@ came up. A health-check-only smoke test goes green with a broken pipeline.
 Secret scanning gates every push. The NVD dependency scan runs **weekly and on demand** instead: a
 vulnerability appears without the code changing, so it is a check that belongs on a clock rather than
 on a commit — and a 30-minute scan of an external API has no business holding a one-line fix hostage.
-The CVSS ≥ 7 gate itself is unchanged; only its timing moved.
+The CVSS ≥ 7 gate itself is unchanged; only its timing moved. It needs an `NVD_API_KEY` repository
+secret — dependency-check 13.x sends an empty key and gets rejected by the NVD without one.
 
 시크릿 스캔은 매 푸시를 막는다. NVD 스캔은 주간·수동 실행으로 옮겼다 — 게이트의 강도가 아니라 시점을 옮긴 것이다.
 
