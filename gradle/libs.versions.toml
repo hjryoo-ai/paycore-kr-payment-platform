@@ -2,7 +2,9 @@
 # 추측 금지 원칙: 아래 버전은 2026-08-19 Maven Central / Gradle Plugin Portal에서 실제 조회하여 고정한 값이다.
 [versions]
 java                = "21"
-springBoot          = "4.1.0"     # 최신 stable (3.5 라인은 OSS EOL)
+springBoot          = "4.1.1"     # 최신 stable (3.5 라인은 OSS EOL)
+                                 # 4.1.0 → 4.1.1 은 보안 갱신이다. Dependabot 경보 15건 중 12건이
+                                 # 이 BOM 이 관리하는 전이 의존성이었고 4.1.1 에서 전부 해소된다.
 foojayResolver      = "1.0.0"
 spotless            = "8.10.0"
 dependencyCheck     = "13.0.0"  # 10.x 는 NVD 의 1000자 초과 reference URL 에서 H2 insert 가 깨진다
@@ -10,10 +12,14 @@ dependencyCheck     = "13.0.0"  # 10.x 는 NVD 의 1000자 초과 reference URL 
 ulid                = "5.2.4"
 jsonSchemaValidator = "3.0.6"
 ibmMqClient         = "9.4.5.1"   # ibmmq 프로파일 전용 (기본 브로커는 Artemis — docs/adr/0002)
-# 아래는 Spring Boot 4.1.0 BOM이 관리하는 버전(참고용, 직접 지정하지 않음):
-#   testcontainers 2.0.5 / flyway 12.4.0 / oracle-database 23.26.2.0.0
-#   kafka-clients 4.2.1 / spring-kafka 4.1.0 / artemis 2.53.0
+# 아래는 Spring Boot 4.1.1 BOM이 관리하는 버전(참고용, 직접 지정하지 않음 — 2026-08-24 BOM 실조회):
+#   testcontainers 2.0.5 / flyway 12.4.0 / oracle-database 23.26.3.0.0
+#   kafka-clients 4.2.1 / spring-kafka 4.1.1 / artemis 2.53.0
 #   junit-jupiter 6.0.3 / assertj 3.27.7 / mockito 5.23.0 / awaitility 4.3.0
+# 보안 관련(4.1.0 → 4.1.1 에서 올라간 것들):
+#   netty 4.2.15.Final → 4.2.17.Final   (high 4건 포함 netty CVE 8건)
+#   jackson-bom 3.1.4 → 3.1.5           (CVE-2026-59889)
+#   log4j2 2.25.4 → 2.25.5              (CVE-2026-49844)
 
 [libraries]
 # --- platforms (BOM) ---
