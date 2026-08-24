@@ -5,7 +5,8 @@ java                = "21"
 springBoot          = "4.1.0"     # 최신 stable (3.5 라인은 OSS EOL)
 foojayResolver      = "1.0.0"
 spotless            = "8.10.0"
-dependencyCheck     = "10.0.3"
+dependencyCheck     = "13.0.0"  # 10.x 는 NVD 의 1000자 초과 reference URL 에서 H2 insert 가 깨진다
+                                # (url VARCHAR(1000) → 13.0.0 에서 VARCHAR(8000)). Plugin Portal 에만 배포된다.
 ulid                = "5.2.4"
 jsonSchemaValidator = "3.0.6"
 ibmMqClient         = "9.4.5.1"   # ibmmq 프로파일 전용 (기본 브로커는 Artemis — docs/adr/0002)

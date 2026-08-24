@@ -402,7 +402,7 @@ docker compose down        # ← required before testing; see the warning below
 ./gradlew build            # compile + format check + tests
 ./gradlew spotlessApply    # auto-format
 ./gradlew bootJar          # runnable jars
-./gradlew dependencyCheckAggregate   # OWASP scan (NVD_API_KEY recommended)
+./gradlew dependencyCheckAggregate   # OWASP scan — slow without NVD_API_KEY (5 req/30s vs 50)
 ```
 
 > **Do not run the compose stack and the test suite at the same time.** Integration tests spin up their
@@ -431,6 +431,13 @@ came up. A health-check-only smoke test goes green with a broken pipeline.
 
 스모크는 "떴는가"가 아니라 "돈이 끝까지 흘렀는가"를 본다.
 
+Secret scanning gates every push. The NVD dependency scan runs **weekly and on demand** instead: a
+vulnerability appears without the code changing, so it is a check that belongs on a clock rather than
+on a commit — and a 30-minute scan of an external API has no business holding a one-line fix hostage.
+The CVSS ≥ 7 gate itself is unchanged; only its timing moved.
+
+시크릿 스캔은 매 푸시를 막는다. NVD 스캔은 주간·수동 실행으로 옮겼다 — 게이트의 강도가 아니라 시점을 옮긴 것이다.
+
 ### Security checklist / 보안 체크리스트
 
 | Area | What is done | Where |
@@ -440,7 +447,7 @@ came up. A health-check-only smoke test goes green with a broken pipeline.
 | Data | Account numbers never appear raw in logs, API responses or reconciliation reports | [`AccountMasker`](common/src/main/java/kr/paycore/common/mask/AccountMasker.java) |
 | Message contract | JSON Schema validated **on send as well as receive** | [`ClearingMessageCodec`](common/src/main/java/kr/paycore/common/clearing/ClearingMessageCodec.java) |
 | Secrets | Injected via env/compose only; gitleaks at pre-commit **and** in CI | [`.gitleaks.toml`](.gitleaks.toml), [`.pre-commit-config.yaml`](.pre-commit-config.yaml) |
-| Dependencies | OWASP Dependency-Check, **build fails at CVSS ≥ 7** | [`build.gradle.kts`](build.gradle.kts) |
+| Dependencies | OWASP Dependency-Check, **fails at CVSS ≥ 7** — weekly + on demand, not on every push ([ADR-0011](docs/adr/0011-dependency-scan-runs-on-a-schedule-not-on-push.md)) | [`build.gradle.kts`](build.gradle.kts) |
 | Audit | Operator actions record who/when/why in the **same commit** as the state change | [`OperationAudit`](payment-core/src/main/java/kr/paycore/core/ops/OperationAudit.java) |
 
 **If this were production, add**: mTLS · HSM-backed message signing · network segregation · four-eyes

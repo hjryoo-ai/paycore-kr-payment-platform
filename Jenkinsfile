@@ -74,6 +74,9 @@ pipeline {
         stage('Dependency Scan') {
             steps {
                 // CVSS 7 이상이면 빌드를 깬다 (build.gradle.kts 의 failBuildOnCVSS).
+                // 여기서는 파이프라인 안에 둘 수 있다 — Jenkins 에이전트는 워크스페이스가 지속돼
+                // NVD 로컬 DB 가 빌드 간에 남고 매 실행이 증분 갱신이다. 러너가 일회용인
+                // GitHub Actions 에서는 같은 검사를 주기 실행으로 뺐다 (ADR-0011).
                 sh './gradlew dependencyCheckAggregate --no-daemon'
             }
             post {
