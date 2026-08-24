@@ -489,7 +489,7 @@ GitHub Actions로 동일 파이프라인 병행 구성(공개 저장소에서 �
 
 > stage 4 만 예외다. GitHub Actions 는 러너가 일회용이라 NVD 로컬 DB 를 매번 새로 적재해야 하고,
 > 키 없는 NVD API 는 30초당 5요청이다(최초 실행 실측 2시간 25분). 푸시 게이트는 gitleaks 가 맡고
-> OWASP 스캔은 주간·수동 실행으로 돌린다 — ADR-0011. Jenkins 는 워크스페이스가 지속되므로
+> OWASP 스캔은 수동 실행 전용이다 — ADR-0011. Jenkins 는 워크스페이스가 지속되므로
 > 증분 갱신이 되고, 파이프라인 안에 그대로 둔다.
 
 ### 10.2 Secure coding 체크리스트 (README에 표로 노출)

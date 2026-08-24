@@ -431,13 +431,16 @@ came up. A health-check-only smoke test goes green with a broken pipeline.
 
 스모크는 "떴는가"가 아니라 "돈이 끝까지 흘렀는가"를 본다.
 
-Secret scanning gates every push. The NVD dependency scan runs **weekly and on demand** instead: a
-vulnerability appears without the code changing, so it is a check that belongs on a clock rather than
-on a commit — and a 30-minute scan of an external API has no business holding a one-line fix hostage.
-The CVSS ≥ 7 gate itself is unchanged; only its timing moved. It needs an `NVD_API_KEY` repository
-secret — dependency-check 13.x sends an empty key and gets rejected by the NVD without one.
+Secret scanning gates every push. The NVD dependency scan is **on demand only** (Actions → Run
+workflow): a 30-minute scan of an external API has no business holding a one-line fix hostage, and the
+CVSS ≥ 7 gate itself is unchanged. The honest cost: nothing re-checks this repository on its own, so a
+CVE published against an untouched dependency goes unnoticed until someone presses the button. That is
+a deliberate trade for a portfolio repository with nothing deployed — **a running service would put the
+weekly schedule back first** ([ADR-0011](docs/adr/0011-dependency-scan-is-not-a-push-gate.md)).
+It needs an `NVD_API_KEY` repository secret; dependency-check 13.x sends an empty key and is rejected
+by the NVD without one.
 
-시크릿 스캔은 매 푸시를 막는다. NVD 스캔은 주간·수동 실행으로 옮겼다 — 게이트의 강도가 아니라 시점을 옮긴 것이다.
+시크릿 스캔은 매 푸시를 막는다. NVD 스캔은 수동 실행 전용이다 — 아무도 누르지 않으면 아무도 모른다는 대가를 안다.
 
 ### Security checklist / 보안 체크리스트
 
@@ -448,11 +451,12 @@ secret — dependency-check 13.x sends an empty key and gets rejected by the NVD
 | Data | Account numbers never appear raw in logs, API responses or reconciliation reports | [`AccountMasker`](common/src/main/java/kr/paycore/common/mask/AccountMasker.java) |
 | Message contract | JSON Schema validated **on send as well as receive** | [`ClearingMessageCodec`](common/src/main/java/kr/paycore/common/clearing/ClearingMessageCodec.java) |
 | Secrets | Injected via env/compose only; gitleaks at pre-commit **and** in CI | [`.gitleaks.toml`](.gitleaks.toml), [`.pre-commit-config.yaml`](.pre-commit-config.yaml) |
-| Dependencies | OWASP Dependency-Check, **fails at CVSS ≥ 7** — weekly + on demand, not on every push ([ADR-0011](docs/adr/0011-dependency-scan-runs-on-a-schedule-not-on-push.md)) | [`build.gradle.kts`](build.gradle.kts) |
+| Dependencies | OWASP Dependency-Check, **fails at CVSS ≥ 7** — on demand only, not on every push ([ADR-0011](docs/adr/0011-dependency-scan-is-not-a-push-gate.md)) | [`build.gradle.kts`](build.gradle.kts) |
 | Audit | Operator actions record who/when/why in the **same commit** as the state change | [`OperationAudit`](payment-core/src/main/java/kr/paycore/core/ops/OperationAudit.java) |
 
-**If this were production, add**: mTLS · HSM-backed message signing · network segregation · four-eyes
-approval · SSO/RBAC on operations APIs · encryption at rest for PII · key rotation · WORM audit storage.
+**If this were production, add**: a scheduled dependency scan (this repo runs it on demand only) · mTLS ·
+HSM-backed message signing · network segregation · four-eyes approval · SSO/RBAC on operations APIs ·
+encryption at rest for PII · key rotation · WORM audit storage.
 
 ---
 
