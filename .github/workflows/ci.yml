@@ -136,7 +136,9 @@ jobs:
     # 무엇보다 외부 API 의 가용성에 코드 푸시가 인질로 잡힌다. 취약점은 코드가 그대로여도
     # 새로 발견되므로 원래 주기 실행이 맞는 종류의 검사다. 푸시 게이트는 gitleaks 가 맡는다.
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    timeout-minutes: 90
+    # 캐시가 비어 있고 NVD_API_KEY 도 없는 콜드 실행의 실측치가 2시간 25분이다.
+    # 90분으로 잡으면 타임아웃이 곧 실패로 보인다 — 원인은 느린 것뿐인데도.
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@v4
 
