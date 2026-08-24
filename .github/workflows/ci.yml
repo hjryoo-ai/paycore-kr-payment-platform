@@ -9,7 +9,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
-  # NVD 스캔의 유일한 입구. 주기 실행은 두지 않는다 — ADR-0011 의 "결과" 절을 볼 것.
+  # 손으로 파이프라인을 다시 돌리기 위한 입구.
   workflow_dispatch:
 
 permissions:
@@ -126,16 +126,15 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  dependency-scan:
-    name: 의존성 취약점 스캔 (NVD)
+  dependency-graph:
+    name: 의존성 그래프 제출
     runs-on: ubuntu-latest
-    # push 마다 돌리지 않는다. NVD API 는 키가 없으면 5 req/30s 라 첫 적재만 두 시간대이고,
-    # 무엇보다 외부 API 의 가용성에 코드 푸시가 인질로 잡힌다. 푸시 게이트는 gitleaks 가 맡는다.
-    # 수동 실행 전용이다. 즉 아무도 돌리지 않으면 아무도 모른다 — ADR-0011 참고.
-    if: github.event_name == 'workflow_dispatch'
-    # 캐시가 비어 있고 NVD_API_KEY 도 없는 콜드 실행의 실측치가 2시간 25분이다.
-    # 90분으로 잡으면 타임아웃이 곧 실패로 보인다 — 원인은 느린 것뿐인데도.
-    timeout-minutes: 180
+    # 여기서 올린 그래프를 GitHub 이 Dependabot 경보의 입력으로 쓴다. Gradle 멀티모듈은
+    # GitHub 이 저장소만 보고는 정확히 읽어내지 못하므로 빌드가 직접 해석해 제출한다.
+    # main 의 상태만 의미가 있다 — PR 마다 그래프를 덮어쓰면 안 된다.
+    if: github.event_name == 'push'
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -145,52 +144,9 @@ jobs:
           distribution: corretto
           java-version: '21'
 
-      - name: Gradle 설정
-        uses: gradle/actions/setup-gradle@v4
-
-      # NVD 로컬 DB 는 setup-gradle 의 캐시 대상이 아니다. 명시하지 않으면 매 실행이 전체 재적재다.
-      # restore/save 를 나눠 둔 이유: 취약점이 발견돼 job 이 실패해도 받아둔 DB 는 남겨야 한다.
-      # 실패 시 캐시를 저장하지 않으면 영원히 전체 재적재만 반복하게 된다.
-      - name: NVD DB 캐시 복원
-        uses: actions/cache/restore@v4
-        with:
-          path: ~/.gradle/dependency-check-data
-          key: nvd-data-${{ github.run_id }}
-          restore-keys: nvd-data-
-
-      # 키가 없으면 dependency-check 13.x 는 빈 문자열을 NVD 로 보내고 거절당한다.
-      # 그때 나오는 메시지가 "length of 0 too short to provided a masked partial key" 라
-      # 원인이 전혀 드러나지 않는다. 몇 분 태우고 수수께끼로 죽느니 먼저 분명하게 죽는다.
-      - name: NVD API 키 확인
-        env:
-          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
-        run: |
-          if [ -z "$NVD_API_KEY" ]; then
-            echo "::error::NVD_API_KEY 시크릿이 없다. dependency-check 13.x 는 키 없이 동작하지 않는다."
-            echo "  gh secret set NVD_API_KEY --repo ${{ github.repository }}"
-            exit 1
-          fi
-          echo "NVD API 키 확인됨 (길이 ${#NVD_API_KEY})"
-
-      - name: 의존성 취약점 스캔 (CVSS 7 이상이면 실패)
-        env:
-          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
-        run: ./gradlew dependencyCheckAggregate --no-daemon
-
-      - name: NVD DB 캐시 저장
-        if: always()
-        uses: actions/cache/save@v4
-        with:
-          path: ~/.gradle/dependency-check-data
-          key: nvd-data-${{ github.run_id }}
-
-      - name: 스캔 리포트 업로드
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: dependency-check-report
-          path: build/reports/dependency-check-report.*
-          if-no-files-found: ignore
+      # 이 액션이 Gradle 설정까지 포함한다. setup-gradle 을 따로 두지 않는다.
+      - name: 의존성 그래프 제출
+        uses: gradle/actions/dependency-submission@v4
 
   smoke:
     name: 로컬 스택 스모크

@@ -402,7 +402,7 @@ docker compose down        # ← required before testing; see the warning below
 ./gradlew build            # compile + format check + tests
 ./gradlew spotlessApply    # auto-format
 ./gradlew bootJar          # runnable jars
-./gradlew dependencyCheckAggregate   # OWASP scan — NVD_API_KEY is required, not optional
+./gradlew dependencyCheckAggregate   # OWASP scan — needs NVD_API_KEY in the env; CI uses Dependabot
 ```
 
 > **Do not run the compose stack and the test suite at the same time.** Integration tests spin up their
@@ -431,16 +431,17 @@ came up. A health-check-only smoke test goes green with a broken pipeline.
 
 스모크는 "떴는가"가 아니라 "돈이 끝까지 흘렀는가"를 본다.
 
-Secret scanning gates every push. The NVD dependency scan is **on demand only** (Actions → Run
-workflow): a 30-minute scan of an external API has no business holding a one-line fix hostage, and the
-CVSS ≥ 7 gate itself is unchanged. The honest cost: nothing re-checks this repository on its own, so a
-CVE published against an untouched dependency goes unnoticed until someone presses the button. That is
-a deliberate trade for a portfolio repository with nothing deployed — **a running service would put the
-weekly schedule back first** ([ADR-0011](docs/adr/0011-dependency-scan-is-not-a-push-gate.md)).
-It needs an `NVD_API_KEY` repository secret; dependency-check 13.x sends an empty key and is rejected
-by the NVD without one.
+Secret scanning gates every push. Dependency vulnerabilities are watched by **Dependabot**, fed by a
+dependency graph the build submits on every push to `main` — GitHub cannot read a multi-module Gradle
+project accurately on its own. OWASP Dependency-Check stays in the Jenkins pipeline and in
+[`build.gradle.kts`](build.gradle.kts) with its CVSS ≥ 7 gate, but no longer runs in GitHub Actions:
+over one day it failed four times, never once completed, and burned three hours of runner time — both
+causes were tool bugs, not vulnerabilities. Dependabot does the same job continuously, for free, and
+opens the fix PR ([ADR-0011](docs/adr/0011-dependency-scan-is-not-a-push-gate.md)). The catch worth
+knowing: the submitted graph *is* Dependabot's field of view, so if the `dependency-graph` job quietly
+breaks, the alerts quietly stop.
 
-시크릿 스캔은 매 푸시를 막는다. NVD 스캔은 수동 실행 전용이다 — 아무도 누르지 않으면 아무도 모른다는 대가를 안다.
+시크릿 스캔은 매 푸시를 막고, 의존성 취약점은 Dependabot 이 상시로 본다. OWASP 는 Jenkins 에 남긴다.
 
 ### Security checklist / 보안 체크리스트
 
@@ -451,12 +452,11 @@ by the NVD without one.
 | Data | Account numbers never appear raw in logs, API responses or reconciliation reports | [`AccountMasker`](common/src/main/java/kr/paycore/common/mask/AccountMasker.java) |
 | Message contract | JSON Schema validated **on send as well as receive** | [`ClearingMessageCodec`](common/src/main/java/kr/paycore/common/clearing/ClearingMessageCodec.java) |
 | Secrets | Injected via env/compose only; gitleaks at pre-commit **and** in CI | [`.gitleaks.toml`](.gitleaks.toml), [`.pre-commit-config.yaml`](.pre-commit-config.yaml) |
-| Dependencies | OWASP Dependency-Check, **fails at CVSS ≥ 7** — on demand only, not on every push ([ADR-0011](docs/adr/0011-dependency-scan-is-not-a-push-gate.md)) | [`build.gradle.kts`](build.gradle.kts) |
+| Dependencies | Dependabot alerts on a build-submitted dependency graph; OWASP Dependency-Check **fails at CVSS ≥ 7** in the Jenkins pipeline ([ADR-0011](docs/adr/0011-dependency-scan-is-not-a-push-gate.md)) | [`build.gradle.kts`](build.gradle.kts), [`Jenkinsfile`](Jenkinsfile) |
 | Audit | Operator actions record who/when/why in the **same commit** as the state change | [`OperationAudit`](payment-core/src/main/java/kr/paycore/core/ops/OperationAudit.java) |
 
-**If this were production, add**: a scheduled dependency scan (this repo runs it on demand only) · mTLS ·
-HSM-backed message signing · network segregation · four-eyes approval · SSO/RBAC on operations APIs ·
-encryption at rest for PII · key rotation · WORM audit storage.
+**If this were production, add**: mTLS · HSM-backed message signing · network segregation · four-eyes
+approval · SSO/RBAC on operations APIs · encryption at rest for PII · key rotation · WORM audit storage.
 
 ---
 

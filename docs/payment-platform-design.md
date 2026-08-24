@@ -488,15 +488,15 @@ stages:
 GitHub Actions로 동일 파이프라인 병행 구성(공개 저장소에서 뱃지 노출용). Jenkins 자체도 compose에 포함시켜 "로컬에서 파이프라인 시연"이 가능하게 한다.
 
 > stage 4 만 예외다. GitHub Actions 는 러너가 일회용이라 NVD 로컬 DB 를 매번 새로 적재해야 하고,
-> 키 없는 NVD API 는 30초당 5요청이다(최초 실행 실측 2시간 25분). 푸시 게이트는 gitleaks 가 맡고
-> OWASP 스캔은 수동 실행 전용이다 — ADR-0011. Jenkins 는 워크스페이스가 지속되므로
-> 증분 갱신이 되고, 파이프라인 안에 그대로 둔다.
+> 키 없는 NVD API 는 30초당 5요청이다(최초 실행 실측 2시간 25분). GitHub Actions 에서는 OWASP 를
+> 걷어내고 Dependabot + 의존성 그래프 제출로 갈음한다 — ADR-0011. Jenkins 는 워크스페이스가
+> 지속돼 증분 갱신이 되므로 파이프라인 안에 그대로 둔다.
 
 ### 10.2 Secure coding 체크리스트 (README에 표로 노출)
 
 - 입력: Bean Validation + 화이트리스트 패턴, 오류 응답에 내부 정보 비노출(RFC 9457 problem+json)
 - 데이터: 계좌번호 로그 마스킹, 시크릿은 환경변수/compose secrets (커밋 금지 — gitleaks pre-commit)
-- 의존성: OWASP Dependency-Check CI 게이트
+- 의존성: Jenkins 는 OWASP Dependency-Check 게이트(CVSS 7↑ fail), GitHub 은 Dependabot 상시 경보 (ADR-0011)
 - 감사: repair 등 모든 운영자 행위는 who/when/why 기록
 - 문서화: "실운영이라면 추가할 것" 목록 — mTLS, 메시지 서명(HSM), 망분리, 4-eyes 승인
 
